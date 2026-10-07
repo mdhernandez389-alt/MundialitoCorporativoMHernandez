@@ -1,0 +1,153 @@
+# Bitácora de decisiones
+
+Cada decisión de diseño, con su motivo. Sirve para defender la solución en la entrevista.
+
+## 1. Arquitectura: Clean Architecture en 4 capas (impuesto por la prueba)
+
+```
+Mundialito.Api  ──►  Mundialito.Infrastructure  ──►  Mundialito.Application  ──►  Mundialito.Domain
+      └──────────────────────────────────────────────────►┘
+```
+
+| Proyecto | Referencia a | Por qué |
+|---|---|---|
+| Domain | (nadie) | El núcleo del negocio no depende de frameworks ni de la base de datos. |
+| Application | Domain | Define los casos de uso y las **interfaces** que necesita (IUnitOfWork, repositorios). |
+| Infrastructure | Application | **Implementa** esas interfaces (EF Core, Dapper). Inversión de dependencias. |
+| Api | Application + Infrastructure | Es el *composition root*: arma todo con DI y solo orquesta. |
+
+La regla la hace cumplir el **compilador**: si Domain intentara usar algo de Infrastructure, no compilaría porque no tiene la referencia.
+
+## 2. Estructura de Application: feature + CQRS
+
+```
+Application/
+  Abstractions/          ICommandHandler, IQueryHandler, IUnitOfWork...
+  Teams/
+    Commands/CreateTeam/ CreateTeamCommand.cs, CreateTeamHandler.cs
+    Queries/GetTeams/    GetTeamsQuery.cs, TeamDto.cs
+  Matches/ ...
+```
+
+**Por qué:** la prueba pide "separación clara" entre Commands y Queries. CQRS es una separación de *caminos*
+(escritura: dominio + EF Core + UoW / lectura: SQL con Dapper a DTOs), no de carpetas; pero agrupar
+por feature y dentro separar Commands/Queries hace la separación **visible** y mantiene junto todo lo de un recurso.
+
+## 3. Despachador CQRS: interfaces propias (sin MediatR)
+
+`ICommandHandler<TCommand, TResult>` / `IQueryHandler<TQuery, TResult>`; el controller recibe el handler por DI.
+
+**Por qué:** cero "magia", se explica línea por línea. MediatR pasó a licencia comercial (v13+) y para este
+tamaño no aporta. Si el proyecto creciera, se puede agregar un dispatcher o decorators sin tocar los handlers.
+
+## 4. Endpoints: Controllers
+
+**Por qué:** es el estándar en equipos .NET empresariales; `[ApiController]` da validación automática del
+modelo (400) y binding de query strings a objetos, útil para filtros y paginación.
+
+## 5. Base de datos: SQL Server
+
+**Por qué:** es el motor habitual en banca con .NET. Paginación eficiente en la base con
+`OFFSET ... ROWS FETCH NEXT ... ROWS ONLY`. Contra asumido: la imagen Docker es pesada y tarda en arrancar.
+
+## 6. Result Pattern (§5)
+
+Archivos en `Mundialito.Domain/Results/`: `Result`, `Result<T>`, `Error`, `ErrorType`.
+
+```csharp
+public Result<Team> Find(Guid id) =>
+    team is null ? TeamErrors.NotFound : Result.Success(team);
+```
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Ubicación | Domain | Las propias entidades devuelven `Result` al validar reglas; Application y Api lo reutilizan. |
+| Código de error | **Obligatorio** (`"Team.NotFound"`) | La prueba lo pide "opcional" como mínimo; obligatorio es más estricto y sirve al frontend (decide por código, no por texto), a los logs estructurados y a los tests. |
+| 400 / 404 / 409 | `ErrorType` dentro de `Error` (`Validation`, `NotFound`, `Conflict`) | El dominio dice **qué** pasó sin saber de HTTP; la Api traduce con un único `switch`. Un error nuevo no obliga a tocar la Api. |
+| Creación | `Result.Success(x)` / `Result.Failure<T>(e)` explícitos + conversión implícita **solo** desde `Error` | Se lee sin "magia"; el implícito permite `return TeamErrors.NotFound;`, el caso más común, sin ambigüedad. |
+| `Error` | `record` sellado con constructor privado y fábricas | Igualdad por valor (útil en tests) y no se puede crear un error sin código, mensaje y tipo. |
+| Éxito sin error | `Error.None` en vez de `null` | Evita chequeos de nulos; `Error` nunca es `null`. |
+
+**¿Y las excepciones que quedan?** `Result` lanza en dos casos: crear `Failure(Error.None)` / éxito con error,
+y leer `.Value` de un resultado fallido. No son control de flujo: son **bugs del programador** (como un
+`ArgumentNullException`) y deben fallar ruidosamente. Los casos de negocio (no existe, duplicado, inválido)
+siempre viajan como `Result`.
+
+## 7. Dominio: entidades, reglas y eventos (§7, §8)
+
+```
+Domain/
+  Abstractions/  Entity (Id + eventos), IDomainEvent, DomainEvent
+  Results/       Result, Result<T>, Error, ErrorType
+  Teams/         Team, TeamErrors, TeamCreatedDomainEvent
+  Players/       Player, PlayerErrors
+  Matches/       Match, Goal, Score, GoalScorer, MatchStatus, MatchErrors, MatchResultRegisteredDomainEvent
+  Standings/     TeamStanding
+```
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Ids | `Guid` generado por el dominio (`Guid.CreateVersion7()`) | La entidad tiene identidad desde que nace: el evento `TeamCreated` y la URL del `201 Created` no dependen de la base. Contra: SQL Server ordena los `uniqueidentifier` por sus últimos bytes, así que v7 no evita del todo la fragmentación del índice; para este volumen es irrelevante. |
+| Marcador vs. goles | **El marcador se deriva de los goles** | El request de resultado es la lista de goleadores; `Match` cuenta los de cada equipo. Es imposible que tabla y goleadores se contradigan: la regla no se valida, no se puede romper. Fuera de alcance (documentado): autogoles. |
+| Corrección de resultado | `PUT` idempotente | El resultado es un sub-recurso que se reemplaza. Mismo resultado (aunque en otro orden) → sin cambios ni evento. Distinto → se reemplazan los goles y el evento lleva `PreviousScore`. |
+| Tabla de posiciones | **Guardada** (`TeamStanding`) y actualizada en la misma transacción | Las reglas (3/1/0, diferencia de gol) viven en C# y se prueban con tests unitarios (§15). Actualizar resultado + 2 filas de tabla en una transacción demuestra el UoW con varios repositorios (§4). Dapper solo lee y ordena. Contra: dato derivado; lo protege la transacción. |
+| `ApplyResult` / `RevertResult` | Un solo método `Tally(gf, gc, direction)` con `+1` / `-1` | Revertir resta exactamente lo que aplicar sumó; no hay dos versiones de la regla que puedan desincronizarse. |
+| Relaciones | `Player` y `Match` referencian equipos solo por Id; `Goal` vive dentro de `Match` | Agregados pequeños: se paginan y filtran sin cargar grafos. `Match` es dueño de sus goles (solo `RegisterResult` los cambia). |
+| Creación | Constructores privados + fábricas (`Create`, `Schedule`) que devuelven `Result` | No se puede crear una entidad inválida. EF Core puede usar el constructor privado con parámetros. |
+| Reglas que requieren la base | En el handler (nombre único, dorsal libre, equipos/jugadores existentes) + índice único | La entidad valida lo que puede saber sola; lo que requiere consultar la base va en Application, y el índice único cubre la carrera entre dos requests. |
+
+Eventos de dominio: `TeamCreatedDomainEvent` y `MatchResultRegisteredDomainEvent` (§7). La entidad solo los acumula
+(`Raise`); registrarlos, loggearlos y despacharlos es trabajo de Infrastructure al hacer commit (pasos 6 y 12).
+
+## 8. Application: contratos CQRS, Unit of Work y repositorios (§3, §4)
+
+```
+Application/
+  Abstractions/
+    Messaging/    ICommand, ICommand<T>, ICommandHandler, IQuery<T>, IQueryHandler
+    Persistence/  IUnitOfWork
+  Teams/          ITeamRepository
+  Players/        IPlayerRepository
+  Matches/        IMatchRepository
+  Standings/      ITeamStandingRepository
+```
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Marcadores `ICommand` / `IQuery<T>` | Interfaces vacías que tipan cada mensaje | El compilador impide registrar una query como command. Si después hacen falta *decorators* (log, transacción), se aplican solo a un lado. |
+| Respuesta de los handlers | `Result` / `Result<T>`, también en las queries | Una lectura también falla de forma esperada (`GET /teams/{id}` inexistente → 404). |
+| UoW y repositorios | **Se inyectan por separado**; `IUnitOfWork` solo confirma | Cada handler declara lo que usa y el UoW no crece con cada repositorio. La consistencia entre repositorios (§4) la garantiza que todos comparten el mismo `DbContext` scoped por request. Contra: esa garantía depende del lifetime de DI, no se ve en la firma. Se cubre con un test del commit (paso 14). |
+| `CommitAsync` | **Devuelve `Result`** | Una carrera entre dos requests (índice único, concurrencia) es un caso esperado → `Error.Conflict` → 409, sin excepción como control de flujo (§5). Lo inesperado (base caída) sí se propaga como excepción → 500. |
+| Repositorios | Solo rastrean (`Add`, `Remove`, `Get...`); **ninguno guarda** | Así "guardar fuera del UnitOfWork" no es posible desde Application. |
+| Ubicación de los repositorios | En Application, por feature | Application define lo que necesita y Infrastructure lo implementa (inversión de dependencias). |
+| Lecturas en un Command | Con EF, a través del repositorio | Cargar el agregado para modificarlo o revisar una regla (nombre único) es parte del *write side*. La restricción "Dapper exclusivo" aplica a las Queries, que son lo que devuelve un GET. |
+| Alcance de los contratos | Mínimo: solo los métodos que piden los Commands conocidos | El paso 7 agrega lo que exijan las reglas de eliminación (p. ej. "¿el equipo tiene partidos?"). |
+
+## 9. Infrastructure (escritura): EF Core y Unit of Work (§3, §4, §7)
+
+```
+Infrastructure/
+  DependencyInjection.cs        AddInfrastructure(): DbContext, UnitOfWork y repositorios (todo Scoped)
+  Persistence/
+    MundialitoDbContext.cs      internal, SaveChanges bloqueado
+    UnitOfWork.cs               transacción + eventos + traducción de errores
+    DomainEventRecord.cs        fila de la tabla DomainEvents
+    Configurations/             Fluent API, una clase por tabla
+    Repositories/               implementaciones de los contratos de Application
+    Migrations/                 InitialCreate
+```
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Bloquear `SaveChanges` fuera del UoW | **`internal` + guardia** | El DbContext es `internal`, así que la Api no lo ve (barrera en compilación). Además `SaveChanges`/`SaveChangesAsync` lanzan excepción; solo el UoW guarda, vía `SaveChangesFromUnitOfWorkAsync` (`internal`). Llamarlo directo es un bug del programador y por eso puede lanzar (ver §6). Cumple el §4 al pie de la letra, incluso dentro de Infrastructure (seed). |
+| Transacción | Explícita en `CommitAsync` (`BeginTransaction` → `SaveChanges` → `Commit`) | Un solo `SaveChanges` ya es atómico, pero la transacción explícita hace visible el §4 ("centralice las transacciones") y deja espacio para guardar más cosas en el mismo commit (idempotencia, paso 11). El rollback es implícito: si no se llega al commit, `await using` la descarta. |
+| Concurrencia | **Optimista con `rowversion`** en `Teams`, `Matches` y `TeamStandings` | Sin esto, dos registros simultáneos del mismo resultado suman el partido **dos veces** a la tabla. Y dos partidos del mismo equipo registrados a la vez pierden una suma. Con `rowversion`, el segundo falla → rollback de todo → `PersistenceErrors.ConcurrencyConflict` (409). Como el PUT de resultado es idempotente, reintentar da 200. Es *shadow property*: el Domain no sabe que existe. |
+| Eventos de dominio | **Tabla `DomainEvents` + log** | El UoW saca los eventos de las entidades rastreadas y los guarda como filas (tipo, JSON, fecha) **en la misma transacción**: el evento existe solo si el cambio se guardó. Se loggean **después** del commit, así no se loggea algo que terminó en rollback. Es la base de un Outbox; el procesador en segundo plano queda fuera de alcance. |
+| Traducción de errores de BD | 2601/2627 (único) → error de dominio según el índice; 547 (FK) → `ReferenceConflict`; concurrencia → `ConcurrencyConflict`. Lo demás sigue como excepción → 500 | Solo se traduce lo que significa "chocaste con otro request". Los índices únicos tienen nombre explícito (`UX_Teams_Name`) y una tabla índice → error, así el cliente recibe `Team.NameDuplicated` aunque el duplicado venga de una carrera. Verificado contra SQL Server: el mensaje 2601 incluye el nombre del índice. |
+| Ids | `ValueGeneratedNever()` | El Id lo genera el dominio. Sin esto EF supone que una entidad nueva que ya trae Id "ya existe" y hace UPDATE en vez de INSERT. |
+| `Score` | `ComplexProperty` (EF Core 10, opcional) → columnas `HomeGoals` / `AwayGoals` nullables | Value object en la misma fila, sin tabla ni Id propios. `null` = partido no jugado. |
+| `MatchStatus` | Guardado como texto (`"Played"`) | La base se entiende sola y los filtros de Dapper (paso 9) se leen claros. |
+| Borrado | FKs entre agregados con `Restrict`; `Goals` y `TeamStandings` en `Cascade` | Lo que es parte del dueño (goles del partido, fila de tabla del equipo) se va con él. Entre agregados, la base no borra nada sola mientras el paso 7 no defina las reglas. |
+| `Points` / `GoalDifference` | No se guardan | Son derivados. La tabla ordenada (paso 10) los calcula en el SQL de Dapper. |
+| Nombre único sin distinguir mayúsculas | Collation por defecto de SQL Server (CI) | "Sistemas" y "sistemas" chocan, tanto en el chequeo del handler como en el índice. |
+| Cadena de conexión | `ConnectionStrings:Mundialito`; la de desarrollo en `appsettings.Development.json` | La contraseña es solo del contenedor local. En Docker (paso 16) llega por variable de entorno. |
