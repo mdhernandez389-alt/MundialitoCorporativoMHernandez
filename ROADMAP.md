@@ -14,8 +14,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 4 | Domain: entidades, reglas de negocio y eventos | §7, §8 | ✅ |
 | 5 | Application: contratos CQRS, IUnitOfWork, repositorios | §3, §4 | ✅ |
 | 6 | Infrastructure (escritura): EF Core, UnitOfWork, migraciones | §3, §4 | ✅ |
-| 7 | Commands: equipos, jugadores, partidos, resultados | §3, §8 | 🔜 |
-| 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | ⬜ |
+| 7 | Commands: equipos, jugadores, partidos, resultados | §3, §8 | ✅ |
+| 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | 🔜 |
 | 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ⬜ |
 | 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ⬜ |
 | 11 | Idempotencia en POST (Idempotency-Key) | §6 | ⬜ |
@@ -85,15 +85,17 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | Concurrencia | Optimista con `rowversion` (Teams, Matches, TeamStandings) → 409 |
 | Eventos de dominio | Tabla `DomainEvents` en la misma transacción + log después del commit |
 
-## 🔜 7. Commands
+## ✅ 7. Commands
 
 Crear, editar (PUT/PATCH) y eliminar equipos; registrar jugadores por equipo; programar partidos; registrar resultados.
 
-**Decisiones a tomar:**
-- ¿Qué se puede eliminar y qué no? (Equipo con partidos, jugador con goles, partido jugado.)
-- Semántica de PATCH: campos nulos = "no cambiar", o JSON Patch.
+| Decisión | Elegido |
+|---|---|
+| Qué se puede eliminar | Equipos sin partidos (jugadores y fila de tabla en cascada); con partidos → 409 |
+| PATCH | `null` = no cambiar (JSON Merge Patch) |
+| Tabla de posiciones | Servicio de dominio `StandingsUpdater`, en la misma transacción que el resultado |
 
-## ⬜ 8. Api: controllers y mapeo de errores
+## 🔜 8. Api: controllers y mapeo de errores
 
 **Decisiones a tomar:**
 - Formato de error: ProblemDetails (RFC 7807) o uno propio.

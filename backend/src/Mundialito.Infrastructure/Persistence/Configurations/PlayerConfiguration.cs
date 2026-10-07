@@ -20,8 +20,9 @@ internal sealed class PlayerConfiguration : IEntityTypeConfiguration<Player>
         builder.Property(p => p.FullName).HasMaxLength(Player.FullNameMaxLength).IsRequired();
 
         // Relación solo por Id (agregados distintos): FK en la base, sin propiedad de navegación en el dominio.
-        // Restrict: qué se puede borrar lo decide el paso 7; mientras tanto la base no borra en cascada.
-        builder.HasOne<Team>().WithMany().HasForeignKey(p => p.TeamId).OnDelete(DeleteBehavior.Restrict);
+        // Cascade: un equipo solo se borra si no tiene partidos (lo valida el handler), y sin partidos
+        // no hay goles, así que sus jugadores se pueden ir con él sin dejar huecos en goleadores.
+        builder.HasOne<Team>().WithMany().HasForeignKey(p => p.TeamId).OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(p => new { p.TeamId, p.ShirtNumber }).IsUnique().HasDatabaseName(ShirtNumberIndex);
 

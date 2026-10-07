@@ -19,6 +19,9 @@ public static class TeamErrors
     public static readonly Error NameDuplicated =
         Error.Conflict("Team.NameDuplicated", "Ya existe un equipo con ese nombre.");
 
+    public static readonly Error HasMatches =
+        Error.Conflict("Team.HasMatches", "No se puede eliminar un equipo que tiene partidos: dejaría inconsistente la tabla de posiciones.");
+
     public static Error NotFound(Guid teamId) =>
         Error.NotFound("Team.NotFound", $"No existe el equipo '{teamId}'.");
 }

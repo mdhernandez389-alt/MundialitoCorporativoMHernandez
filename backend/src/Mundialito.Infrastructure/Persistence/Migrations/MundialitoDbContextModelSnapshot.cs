@@ -246,7 +246,7 @@ namespace Mundialito.Infrastructure.Persistence.Migrations
                     b.HasOne("Mundialito.Domain.Teams.Team", null)
                         .WithMany()
                         .HasForeignKey("TeamId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

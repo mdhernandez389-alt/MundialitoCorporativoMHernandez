@@ -151,3 +151,25 @@ Infrastructure/
 | `Points` / `GoalDifference` | No se guardan | Son derivados. La tabla ordenada (paso 10) los calcula en el SQL de Dapper. |
 | Nombre único sin distinguir mayúsculas | Collation por defecto de SQL Server (CI) | "Sistemas" y "sistemas" chocan, tanto en el chequeo del handler como en el índice. |
 | Cadena de conexión | `ConnectionStrings:Mundialito`; la de desarrollo en `appsettings.Development.json` | La contraseña es solo del contenedor local. En Docker (paso 16) llega por variable de entorno. |
+
+## 10. Commands (§3, §8)
+
+| Command | Endpoint (paso 8) | Qué hace en una transacción |
+|---|---|---|
+| `CreateTeam` | `POST /teams` | Equipo + su fila en la tabla (en cero) + evento `TeamCreated` |
+| `UpdateTeam` | `PUT /teams/{id}` | Reemplaza nombre y departamento |
+| `PatchTeam` | `PATCH /teams/{id}` | Cambia solo los campos enviados |
+| `DeleteTeam` | `DELETE /teams/{id}` | Borra equipo, jugadores y fila de tabla (si no tiene partidos) |
+| `RegisterPlayer` | `POST /teams/{teamId}/players` | Jugador con dorsal único en su equipo |
+| `ScheduleMatch` | `POST /matches` | Partido programado entre dos equipos existentes |
+| `RegisterMatchResult` | `PUT /matches/{id}/result` | Goles + marcador + 2 filas de tabla + evento `MatchResultRegistered` |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Qué se puede eliminar | Solo `DELETE` de equipos (lo único que pide el §8), y **solo si no tiene partidos** → si no, `Team.HasMatches` (409) | Los rivales tienen puntos ganados contra él: borrarlo en cascada dejaría la tabla inconsistente. Sin partidos no hay goles, así que sus jugadores y su fila de tabla se borran en cascada (migración `TeamDeleteCascadesPlayers`). Si alguien programa un partido entre el chequeo y el borrado, la FK lo frena → `ReferenceConflict` (409). |
+| PATCH | **`null` = no cambiar** (semántica de JSON Merge Patch, RFC 7396) | Simple para el frontend y Postman; no mete paquetes de ASP.NET en Application. El handler completa lo faltante con el valor actual y pasa por el mismo `Team.Update` que el PUT: una sola regla de validación. La limitación (no poder "borrar" un campo) no aplica: ambos son obligatorios. |
+| Orden de validación | Entidad (400) → base (404/409) → commit | Lo barato y sin I/O primero. Excepción: en `RegisterPlayer` el equipo va en la **ruta**, así que si no existe se responde 404 antes de validar el body. |
+| Tabla de posiciones | Servicio de dominio `StandingsUpdater.ApplyResultChange(home, away, previous, new)` | Regla pura del torneo que involucra dos filas y un marcador: va en Domain y se prueba sin base. El handler solo carga, llama y confirma. |
+| Goleadores | Ids de jugador, uno por gol; se resuelven en **una** consulta (`GetByIdsAsync`) | El equipo de cada gol sale del jugador, no del cliente: es imposible acreditar un gol al equipo equivocado. |
+| Fila de tabla faltante | Excepción (500), no `Result` | Cada equipo nace con su fila; que falte es un dato corrupto (un bug), no un caso de negocio. |
+| Registro de handlers | `AddApplication()` recorre el ensamblado por reflexión | Un handler nuevo queda registrado sin tocar la DI. Los handlers son `internal`: la Api solo los usa a través de la interfaz. |

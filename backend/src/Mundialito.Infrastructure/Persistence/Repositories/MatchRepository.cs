@@ -11,5 +11,8 @@ internal sealed class MatchRepository(MundialitoDbContext dbContext) : IMatchRep
             .Include(m => m.Goals)
             .FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
 
+    public Task<bool> ExistsForTeamAsync(Guid teamId, CancellationToken cancellationToken) =>
+        dbContext.Matches.AnyAsync(m => m.HomeTeamId == teamId || m.AwayTeamId == teamId, cancellationToken);
+
     public void Add(Match match) => dbContext.Matches.Add(match);
 }
