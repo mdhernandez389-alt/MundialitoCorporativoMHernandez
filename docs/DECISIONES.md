@@ -173,3 +173,39 @@ Infrastructure/
 | Goleadores | Ids de jugador, uno por gol; se resuelven en **una** consulta (`GetByIdsAsync`) | El equipo de cada gol sale del jugador, no del cliente: es imposible acreditar un gol al equipo equivocado. |
 | Fila de tabla faltante | Excepción (500), no `Result` | Cada equipo nace con su fila; que falte es un dato corrupto (un bug), no un caso de negocio. |
 | Registro de handlers | `AddApplication()` recorre el ensamblado por reflexión | Un handler nuevo queda registrado sin tocar la DI. Los handlers son `internal`: la Api solo los usa a través de la interfaz. |
+
+## 11. Api: controllers y traducción Result → HTTP (§5, §6)
+
+```
+Api/
+  Program.cs              composition root, ProblemDetails, manejo de excepciones
+  Controllers/
+    ApiController.cs      base: Error → ProblemDetails, ErrorType → status code
+    TeamsController.cs    POST / PUT / PATCH / DELETE  /api/teams
+    PlayersController.cs  POST                         /api/teams/{teamId}/players
+    MatchesController.cs  POST /api/matches · PUT /api/matches/{id}/result
+  Contracts/              requests y CreatedResponse (el contrato HTTP, separado de los Commands)
+```
+
+| Situación | Respuesta |
+|---|---|
+| POST exitoso | `201 Created` + header `Location` + `{ "id": "..." }` |
+| PUT / PATCH / DELETE exitoso | `204 No Content` |
+| `ErrorType.Validation` | `400` |
+| `ErrorType.NotFound` | `404` |
+| `ErrorType.Conflict` (duplicado, concurrencia, equipo con partidos) | `409` |
+| JSON mal formado, campo `[Required]` ausente | `400` (ASP.NET) con `code: "Request.Invalid"` |
+| Excepción no controlada (bug) | `500` sin stack trace, con `code: "Server.Error"` |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Formato de error | **ProblemDetails (RFC 9457) + `code`** | Es el formato que ASP.NET ya usa para sus propios errores: con él el frontend maneja **uno** solo. Trae `traceId` para cruzar con los logs (§7). `CustomizeProblemDetails` garantiza que **todo** error lleve `code`, incluso los que no pasan por nuestro código. |
+| DELETE de algo que no existe | **204 siempre** | El estado pedido ("ese equipo no existe") ya se cumple. Repetir el DELETE responde igual que la primera vez: idempotencia visible (§6). Así lo recomiendan las Microsoft/Azure REST API Guidelines. Lo decide el handler (Application), no un caso especial en la Api. Contra asumido: un Id mal escrito también da 204. |
+| PUT / PATCH exitoso | **204 sin cuerpo** | CQRS: un Command cambia estado y no devuelve datos de lectura. El recurso actualizado se pide con GET (lado Query). |
+| Requests separados de los Commands | `Contracts/` en la Api | El Id viene de la ruta y los datos del body. El contrato HTTP puede evolucionar sin tocar Application. |
+| Validación | El dominio valida reglas; la Api solo exige lo que el dominio **no puede** detectar | Se apagó el `[Required]` implícito de ASP.NET para strings: un nombre ausente llega `null` y responde `Team.NameRequired`, con el mismo código que un nombre vacío. Los `Guid` y la fecha sí llevan `[Required]`: ausentes llegarían como `Guid.Empty` / `0001-01-01`, que parecen datos reales. |
+| `scorerPlayerIds` | Obligatorio, `[]` = 0 a 0 | Un 0 a 0 se registra a propósito; olvidarse del campo no lo registra por accidente. |
+| Fecha del partido | `DateTimeOffset` en el request → UTC en el dominio | El cliente manda su zona horaria y no hay ambigüedad sobre "las 18:00 de quién". |
+| Handlers en el controller | `[FromServices]` por acción | Cada acción recibe solo el handler que usa; el controller no tiene un constructor con 4 dependencias. |
+| HTTPS redirect | Quitado | La API corre detrás de Docker / el frontend por HTTP. TLS se termina afuera (proxy), no en el contenedor. |
+| Base de desarrollo | Contenedor `mundialito-mh-db`, puerto `14333` | No choca con otro SQL Server local en el 1433. |

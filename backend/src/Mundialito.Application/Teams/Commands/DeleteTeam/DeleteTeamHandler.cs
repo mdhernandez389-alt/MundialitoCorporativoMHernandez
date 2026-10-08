@@ -14,9 +14,11 @@ internal sealed class DeleteTeamHandler(
     public async Task<Result> HandleAsync(DeleteTeamCommand command, CancellationToken cancellationToken)
     {
         var team = await teams.GetByIdAsync(command.TeamId, cancellationToken);
+        // DELETE idempotente (§6): si no existe, el estado pedido ("ese equipo no existe") ya se cumple.
+        // Repetir el DELETE responde lo mismo que la primera vez.
         if (team is null)
         {
-            return TeamErrors.NotFound(command.TeamId);
+            return Result.Success();
         }
 
         // Sus rivales tienen puntos ganados contra él: borrarlo dejaría la tabla inconsistente.

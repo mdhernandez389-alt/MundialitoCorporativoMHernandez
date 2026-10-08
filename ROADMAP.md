@@ -15,8 +15,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 5 | Application: contratos CQRS, IUnitOfWork, repositorios | §3, §4 | ✅ |
 | 6 | Infrastructure (escritura): EF Core, UnitOfWork, migraciones | §3, §4 | ✅ |
 | 7 | Commands: equipos, jugadores, partidos, resultados | §3, §8 | ✅ |
-| 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | 🔜 |
-| 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ⬜ |
+| 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | ✅ |
+| 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | 🔜 |
 | 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ⬜ |
 | 11 | Idempotencia en POST (Idempotency-Key) | §6 | ⬜ |
 | 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ⬜ |
@@ -77,7 +77,9 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 
 ## ✅ 6. Infrastructure (escritura)
 
-`DbContext`, configuraciones con Fluent API, implementación del UnitOfWork con transacción, repositorios y migración inicial.
+`MundialitoDbContext` (`internal`), configuraciones con Fluent API, `UnitOfWork` con transacción explícita y traducción de errores de BD a `Result`, 4 repositorios, `AddInfrastructure()` y migración `InitialCreate`.
+
+**Verificado:** la migración se aplica en SQL Server; el error 2601 trae el nombre del índice (`UX_Teams_Name`) y la collation trata "Sistemas" = "sistemas".
 
 | Decisión | Elegido |
 |---|---|
@@ -87,7 +89,9 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 
 ## ✅ 7. Commands
 
-Crear, editar (PUT/PATCH) y eliminar equipos; registrar jugadores por equipo; programar partidos; registrar resultados.
+7 Commands con sus handlers: `CreateTeam`, `UpdateTeam`, `PatchTeam`, `DeleteTeam`, `RegisterPlayer`, `ScheduleMatch`, `RegisterMatchResult`. Servicio de dominio `StandingsUpdater`, `AddApplication()` (registro por reflexión) y migración `TeamDeleteCascadesPlayers`.
+
+**Verificado:** `StandingsUpdater` con 4 escenarios (primer registro, reintento idéntico, dos correcciones encadenadas): "Jugados" queda siempre en 1.
 
 | Decisión | Elegido |
 |---|---|
@@ -95,14 +99,29 @@ Crear, editar (PUT/PATCH) y eliminar equipos; registrar jugadores por equipo; pr
 | PATCH | `null` = no cambiar (JSON Merge Patch) |
 | Tabla de posiciones | Servicio de dominio `StandingsUpdater`, en la misma transacción que el resultado |
 
-## 🔜 8. Api: controllers y mapeo de errores
+## ✅ 8. Api: controllers y mapeo de errores
 
-**Decisiones a tomar:**
-- Formato de error: ProblemDetails (RFC 7807) o uno propio.
-- DELETE de algo que ya no existe: ¿204 o 404?
-- Respuesta de PUT/PATCH: 200 con el recurso o 204 sin cuerpo.
+`ApiController` (base: `Error` → ProblemDetails, `ErrorType` → status), `TeamsController`, `PlayersController`, `MatchesController`, requests en `Contracts/`. `Program.cs` con ProblemDetails para todo error (incluidos JSON inválido, rutas inexistentes y 500).
 
-## ⬜ 9. Queries con Dapper
+| Endpoint | Éxito |
+|---|---|
+| `POST /api/teams` | 201 + `Location` |
+| `PUT` / `PATCH` / `DELETE /api/teams/{id}` | 204 |
+| `POST /api/teams/{teamId}/players` | 201 + `Location` |
+| `POST /api/matches` | 201 + `Location` |
+| `PUT /api/matches/{id}/result` | 204 |
+
+**Verificado:** 30 llamadas reales contra la API y SQL Server (éxitos, 400/404/409, DELETE repetido, ruta inexistente), todas con el status y `code` esperados. En la base: tabla correcta tras registrar, reintentar y corregir; cascada al borrar; eventos en `DomainEvents` y en el log.
+
+**Base de desarrollo:** contenedor `mundialito-mh-db`, puerto `14333`.
+
+| Decisión | Elegido |
+|---|---|
+| Formato de error | ProblemDetails (RFC 9457) + `code`, en todos los errores |
+| DELETE de algo que no existe | 204 siempre (idempotente) |
+| PUT / PATCH exitoso | 204 sin cuerpo |
+
+## 🔜 9. Queries con Dapper
 
 Listas con `pageNumber`, `pageSize`, `sortBy`, `sortDirection` y filtros por entidad; paginación en la base, sin traer todo a memoria.
 
