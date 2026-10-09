@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Correo original de la prueba: datos personales y aviso de confidencialidad. Nunca versionar.
+docs/Gmail*.html

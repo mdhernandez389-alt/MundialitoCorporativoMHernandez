@@ -2,7 +2,8 @@
 
 ## Regla principal
 
-Todo el proyecto se rige por el documento de la prueba: [docs/Gmail - Prueba Técnica INFATLAN SV.html](docs/Gmail%20-%20Prueba%20Técnica%20INFATLAN%20SV.html).
+Todo el proyecto se rige por los requisitos de la prueba: [docs/ENUNCIADO.md](docs/ENUNCIADO.md)
+(resumen sin datos personales; el correo original queda solo en el disco local, fuera de git).
 Cada decisión, archivo y paso debe cumplir sus estándares y su finalidad. Si algo no está claro en el documento,
 se define un criterio propio sin perder de vista el requerimiento general, y se anota en [docs/DECISIONES.md](docs/DECISIONES.md).
 

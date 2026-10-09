@@ -245,3 +245,20 @@ Infrastructure/Queries/                        (el CÓMO: Dapper + SQL)
 | Jugadores de un equipo inexistente | 404 (no lista vacía) | Una lista vacía haría creer que el equipo existe pero no tiene jugadores. |
 | Detalle de partido | Partido + goles (con nombre del jugador) en un solo viaje | El frontend lo necesita para mostrar o corregir el resultado. |
 | Binding | `[FromQuery]` directo a la Query de Application | Los parámetros del listado *son* la Query; un DTO intermedio sería una copia 1:1. En los Commands sí hay request propio porque combinan ruta + body. |
+
+## 13. Lógica del torneo: tabla de posiciones y goleadores (§8)
+
+| Endpoint | Fuente | Filtros | `sortBy` |
+|---|---|---|---|
+| `GET /api/standings` | `TeamStandings` (precalculada) | `teamName`, `department` | **`position`**, `points`, `goalDifference`, `goalsFor`, `teamName` |
+| `GET /api/scorers` | `Goals` agrupados por jugador | `teamId`, `playerName` | **`position`**, `goals`, `playerName`, `teamName` |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Orden fijo (§8) vs `sortBy` (§10) | **Columna `position` + `sortBy`** | `position` se calcula en SQL con el orden oficial (puntos → diferencia → goles a favor) y es el orden por defecto. `sortBy` permite otras vistas, pero la posición de cada equipo no cambia. Se cumplen los dos requisitos sin contradecirse. |
+| Empate total | **Posición compartida (`RANK`)**: 1, 2, 2, 4 | Los criterios del §8 no distinguen a esos equipos; desempatar por nombre inventaría una regla. Dentro del empate se listan por nombre solo para que la paginación sea estable. |
+| Posición con filtros | Se calcula en una **subconsulta sobre todo el torneo**, antes del WHERE y la paginación | Filtrar por "Finanzas" muestra su posición real (p. ej. 3º), no "1º de 1". Lo mismo para goleadores filtrados por equipo. |
+| Puntos y diferencia | Calculados en SQL con `CROSS APPLY`, usando `TeamStanding.PointsPerWin` / `PointsPerDraw` | La regla 3/1/0 vive en una sola constante del dominio; el SQL la interpola (es una constante del código, no texto del usuario). `CROSS APPLY` los calcula una vez para usarlos en el `RANK` y en el `SELECT`. |
+| Tabla: ¿calcular o leer? | **Leer** `TeamStandings` | Ya se actualiza en la misma transacción que cada resultado (paso 4); el GET no recorre partidos: su costo depende de los equipos, no de los partidos jugados. |
+| Goleadores: ¿calcular o guardar? | **Calcular** con `COUNT(*) … GROUP BY` sobre `Goals` | Los goles ya están normalizados e indexados por jugador. Guardar otro contador sería un dato derivado más que mantener sincronizado. Como el marcador se deriva de los goles, ambas tablas nunca se contradicen. |
+| Goleadores sin goles | No aparecen | Una tabla de goleadores lista a quien anotó. |

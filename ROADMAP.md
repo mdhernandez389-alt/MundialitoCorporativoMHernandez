@@ -4,7 +4,12 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 
 - **Estado:** ✅ hecho · 🔜 siguiente · ⬜ pendiente
 - **Decisiones:** las ya tomadas, con su justificación completa, están en [docs/DECISIONES.md](docs/DECISIONES.md).
-- **Req.:** sección del documento de la prueba que cubre el paso.
+- **Req.:** sección de los requisitos ([docs/ENUNCIADO.md](docs/ENUNCIADO.md)) que cubre el paso.
+
+> **⏸ Pendiente al retomar (paso 10):** completar `OfficialOrder` en
+> [GetStandingsHandler.cs](backend/src/Mundialito.Infrastructure/Queries/Standings/GetStandingsHandler.cs)
+> (busca `TODO(human)`): el `ORDER BY` del `RANK()` con los tres criterios del §8.
+> Mientras esté vacío, `GET /api/standings` falla con 500. Después: probar tabla y goleadores, y cerrar el paso 10.
 
 | # | Paso | Req. | Estado |
 |---|---|---|---|
@@ -143,6 +148,14 @@ Queries y DTOs en Application; handlers con Dapper en `Infrastructure/Queries/` 
 ## 🔜 10. Lógica del torneo
 
 Tabla ordenada por puntos, diferencia de gol y goles a favor; goleadores. Ambas consultas optimizadas con Dapper.
+
+| Decisión | Elegido |
+|---|---|
+| Orden fijo (§8) vs `sortBy` (§10) | Columna `position` con el orden oficial (default) + `sortBy` para otras vistas |
+| Empate total | Posición compartida (`RANK`) |
+
+**Estado:** contratos, handlers (`GetStandingsHandler`, `GetScorersHandler`) y endpoints (`GET /api/standings`, `GET /api/scorers`) escritos.
+Falta el `TODO(human)` de `OfficialOrder` y las pruebas.
 
 ## ⬜ 11. Idempotencia
 
