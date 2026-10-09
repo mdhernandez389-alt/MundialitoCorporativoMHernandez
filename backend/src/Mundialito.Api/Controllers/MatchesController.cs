@@ -1,14 +1,40 @@
 using Microsoft.AspNetCore.Mvc;
 using Mundialito.Api.Contracts;
 using Mundialito.Application.Abstractions.Messaging;
+using Mundialito.Application.Abstractions.Querying;
 using Mundialito.Application.Matches.Commands.RegisterMatchResult;
 using Mundialito.Application.Matches.Commands.ScheduleMatch;
+using Mundialito.Application.Matches.Queries;
+using Mundialito.Application.Matches.Queries.GetMatchById;
+using Mundialito.Application.Matches.Queries.GetMatches;
 
 namespace Mundialito.Api.Controllers;
 
 [Route("api/matches")]
 public sealed class MatchesController : ApiController
 {
+    /// <summary>
+    /// Lista paginada. Query string: pageNumber, pageSize, sortBy (scheduledAt|status), sortDirection,
+    /// from, to (fechas con zona; el "+" va como %2B), teamId, status (Scheduled|Played).
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType<PagedResult<MatchDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] GetMatchesQuery query,
+        [FromServices] IQueryHandler<GetMatchesQuery, PagedResult<MatchDto>> handler,
+        CancellationToken cancellationToken) =>
+        OkOrProblem(await handler.HandleAsync(query, cancellationToken));
+
+    [HttpGet("{matchId:guid}")]
+    [ProducesResponseType<MatchDetailDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(
+        Guid matchId,
+        [FromServices] IQueryHandler<GetMatchByIdQuery, MatchDetailDto> handler,
+        CancellationToken cancellationToken) =>
+        OkOrProblem(await handler.HandleAsync(new GetMatchByIdQuery(matchId), cancellationToken));
+
     [HttpPost]
     [ProducesResponseType<CreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]

@@ -27,6 +27,10 @@ public abstract class ApiController : ControllerBase
         return new ObjectResult(problem) { StatusCode = problem.Status };
     }
 
+    /// <summary>200 con el valor si salió bien; ProblemDetails si no. Para los GET (Queries).</summary>
+    protected IActionResult OkOrProblem<T>(Result<T> result) =>
+        result.IsSuccess ? Ok(result.Value) : Problem(result.Error);
+
     /// <summary>204 si salió bien; ProblemDetails si no. Para PUT, PATCH y DELETE (Commands sin valor).</summary>
     protected IActionResult NoContentOrProblem(Result result) =>
         result.IsSuccess ? NoContent() : Problem(result.Error);

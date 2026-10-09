@@ -16,8 +16,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 6 | Infrastructure (escritura): EF Core, UnitOfWork, migraciones | §3, §4 | ✅ |
 | 7 | Commands: equipos, jugadores, partidos, resultados | §3, §8 | ✅ |
 | 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | ✅ |
-| 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | 🔜 |
-| 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ⬜ |
+| 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ✅ |
+| 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | 🔜 |
 | 11 | Idempotencia en POST (Idempotency-Key) | §6 | ⬜ |
 | 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ⬜ |
 | 13 | Seed de datos | §9 | ⬜ |
@@ -121,16 +121,26 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | DELETE de algo que no existe | 204 siempre (idempotente) |
 | PUT / PATCH exitoso | 204 sin cuerpo |
 
-## 🔜 9. Queries con Dapper
+## ✅ 9. Queries con Dapper
 
-Listas con `pageNumber`, `pageSize`, `sortBy`, `sortDirection` y filtros por entidad; paginación en la base, sin traer todo a memoria.
+Queries y DTOs en Application; handlers con Dapper en `Infrastructure/Queries/` sobre piezas comunes (`SortMap`, `SqlWhere`, `PagedSql`, `DbConnectionFactory`). Seis GET nuevos:
 
-**Decisiones a tomar:**
-- Cómo ordenar por una columna elegida por el usuario sin abrir la puerta a SQL Injection.
-- ¿Dónde viven los handlers de lectura, en Application o en Infrastructure?
-- Total de registros: ¿dos consultas o una sola?
+| Endpoint | Filtros | `sortBy` |
+|---|---|---|
+| `GET /api/teams` | `name`, `department` | `name`, `department` |
+| `GET /api/teams/{teamId}/players` | `name` | `shirtNumber`, `fullName` |
+| `GET /api/matches` | `from`, `to`, `teamId`, `status` | `scheduledAt`, `status` |
+| `GET` por Id (equipo, jugador, partido con goles) | — | — |
 
-## ⬜ 10. Lógica del torneo
+**Verificado:** 36 llamadas reales: paginación (incluida una página más allá del final), límites de `pageSize`, orden en mayúsculas/minúsculas, intentos de inyección en `sortBy`, `sortDirection` y filtros (400 o búsqueda literal; la tabla intacta), `%` literal, filtros de partidos por fecha/equipo/estado y forma exacta de la respuesta del §10.
+
+| Decisión | Elegido |
+|---|---|
+| `sortBy` seguro | Lista blanca (`SortMap`) + `Id` como desempate; valor desconocido → 400 |
+| Handlers de lectura | Query y DTO en Application; handler con Dapper y SQL en Infrastructure |
+| Total de registros | 2 consultas en 1 viaje (`QueryMultiple`) |
+
+## 🔜 10. Lógica del torneo
 
 Tabla ordenada por puntos, diferencia de gol y goles a favor; goleadores. Ambas consultas optimizadas con Dapper.
 

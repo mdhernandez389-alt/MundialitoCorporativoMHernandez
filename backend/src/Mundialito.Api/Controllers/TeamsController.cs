@@ -1,10 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Mundialito.Api.Contracts;
 using Mundialito.Application.Abstractions.Messaging;
+using Mundialito.Application.Abstractions.Querying;
 using Mundialito.Application.Teams.Commands.CreateTeam;
 using Mundialito.Application.Teams.Commands.DeleteTeam;
 using Mundialito.Application.Teams.Commands.PatchTeam;
 using Mundialito.Application.Teams.Commands.UpdateTeam;
+using Mundialito.Application.Teams.Queries;
+using Mundialito.Application.Teams.Queries.GetTeamById;
+using Mundialito.Application.Teams.Queries.GetTeams;
 
 namespace Mundialito.Api.Controllers;
 
@@ -14,6 +18,25 @@ namespace Mundialito.Api.Controllers;
 [Route("api/teams")]
 public sealed class TeamsController : ApiController
 {
+    /// <summary>Lista paginada. Query string: pageNumber, pageSize, sortBy (name|department), sortDirection, name, department.</summary>
+    [HttpGet]
+    [ProducesResponseType<PagedResult<TeamDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] GetTeamsQuery query,
+        [FromServices] IQueryHandler<GetTeamsQuery, PagedResult<TeamDto>> handler,
+        CancellationToken cancellationToken) =>
+        OkOrProblem(await handler.HandleAsync(query, cancellationToken));
+
+    [HttpGet("{teamId:guid}")]
+    [ProducesResponseType<TeamDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(
+        Guid teamId,
+        [FromServices] IQueryHandler<GetTeamByIdQuery, TeamDto> handler,
+        CancellationToken cancellationToken) =>
+        OkOrProblem(await handler.HandleAsync(new GetTeamByIdQuery(teamId), cancellationToken));
+
     [HttpPost]
     [ProducesResponseType<CreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]

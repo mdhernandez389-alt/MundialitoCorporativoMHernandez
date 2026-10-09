@@ -209,3 +209,39 @@ Api/
 | Handlers en el controller | `[FromServices]` por acción | Cada acción recibe solo el handler que usa; el controller no tiene un constructor con 4 dependencias. |
 | HTTPS redirect | Quitado | La API corre detrás de Docker / el frontend por HTTP. TLS se termina afuera (proxy), no en el contenedor. |
 | Base de desarrollo | Contenedor `mundialito-mh-db`, puerto `14333` | No choca con otro SQL Server local en el 1433. |
+
+## 12. Queries con Dapper: filtros, paginación y orden (§3, §10)
+
+```
+Application/                                   (el QUÉ: contratos, sin SQL ni Dapper)
+  Abstractions/Querying/   PagedQuery, PagedResult<T>, QueryErrors
+  Teams/Queries/           TeamDto, GetTeams/GetTeamsQuery, GetTeamById/GetTeamByIdQuery
+  Players/Queries/         PlayerDto, GetTeamPlayers/..., GetPlayerById/...
+  Matches/Queries/         MatchDto, MatchDetailDto, GoalDto, GetMatches/..., GetMatchById/...
+Infrastructure/Queries/                        (el CÓMO: Dapper + SQL)
+  Common/                  DbConnectionFactory, SqlWhere, SortMap, PagedSql
+  Teams/ Players/ Matches/ handlers de lectura
+```
+
+| Endpoint | Filtros | `sortBy` (por defecto en negrita) |
+|---|---|---|
+| `GET /api/teams` | `name`, `department` (contiene) | **`name`**, `department` |
+| `GET /api/teams/{teamId}/players` | `name` (contiene) | **`shirtNumber`**, `fullName` |
+| `GET /api/matches` | `from`, `to`, `teamId` (local o visitante), `status` | **`scheduledAt`**, `status` |
+| `GET /api/teams/{id}`, `.../players/{id}`, `/api/matches/{id}` | — | — |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| `sortBy` seguro | **Lista blanca** (`SortMap`): nombre público → columna SQL; desconocido → 400 con los valores permitidos | Dapper parametriza valores, no nombres de columna: `ORDER BY @SortBy` no existe. El texto del usuario solo se usa para *buscar* en el diccionario; lo que llega al SQL lo escribimos nosotros. Rechazar (en vez de ignorar) hace visible un typo del frontend. |
+| Desempate | Siempre `, Id` al final del ORDER BY | Sin columna única, filas empatadas pueden cambiar de orden entre consultas y aparecer en dos páginas o en ninguna. |
+| Dónde viven los handlers de lectura | **Query y DTO en Application; handler con SQL en Infrastructure** | Application sigue dependiendo solo de Domain (§2, sin Dapper). En lectura el SQL *es* la lógica, así que vive junto a la base. La Api solo conoce `IQueryHandler<TQuery, TResult>`. |
+| Total de registros | **2 consultas, 1 viaje** (`QueryMultiple`: `COUNT` + página) | Cada SELECT hace una cosa. Con `COUNT(*) OVER()` una página vacía (más allá del final) no trae filas y por lo tanto tampoco el total. |
+| Paginación | `OFFSET/FETCH` en SQL Server; `pageSize` entre 1 y **100**; `pageNumber` ≥ 1; inválido → 400 | El tope garantiza "nunca traer todo a memoria" (§10) incluso con `pageSize=1000000`. |
+| WHERE dinámico | `SqlWhere` agrega **solo** los filtros presentes, siempre parametrizados | Evita `(@x IS NULL OR ...)`, que obliga a SQL Server a usar un plan genérico. Cada combinación de filtros tiene su plan. |
+| Filtro "contiene" | `LIKE @p ESCAPE '\'` con `%`, `_` y `[` escapados | Buscar "50%" encuentra "50%", no todo lo que empiece con "50". |
+| `status` | Comparado contra los nombres del enum, sin distinguir mayúsculas | `Enum.TryParse` aceptaría "1" o "99" como válidos. |
+| Fechas en la respuesta | `ScheduledAtUtc` marcado como UTC en el DTO | SQL devuelve `datetime2` "sin zona"; sin marcarlo, el JSON no lleva `Z` y el cliente lo leería como hora local. |
+| GET por Id | Un objeto, no una página | "Todos los GET" del §10 se interpreta como todos los **listados**: paginar un único recurso no tiene sentido. Son las URLs del `Location` de los POST. |
+| Jugadores de un equipo inexistente | 404 (no lista vacía) | Una lista vacía haría creer que el equipo existe pero no tiene jugadores. |
+| Detalle de partido | Partido + goles (con nombre del jugador) en un solo viaje | El frontend lo necesita para mostrar o corregir el resultado. |
+| Binding | `[FromQuery]` directo a la Query de Application | Los parámetros del listado *son* la Query; un DTO intermedio sería una copia 1:1. En los Commands sí hay request propio porque combinan ruta + body. |

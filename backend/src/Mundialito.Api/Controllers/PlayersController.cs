@@ -1,7 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Mundialito.Api.Contracts;
 using Mundialito.Application.Abstractions.Messaging;
+using Mundialito.Application.Abstractions.Querying;
 using Mundialito.Application.Players.Commands.RegisterPlayer;
+using Mundialito.Application.Players.Queries;
+using Mundialito.Application.Players.Queries.GetPlayerById;
+using Mundialito.Application.Players.Queries.GetTeamPlayers;
 
 namespace Mundialito.Api.Controllers;
 
@@ -9,6 +13,29 @@ namespace Mundialito.Api.Controllers;
 [Route("api/teams/{teamId:guid}/players")]
 public sealed class PlayersController : ApiController
 {
+    /// <summary>Lista paginada del equipo. Query string: pageNumber, pageSize, sortBy (shirtNumber|fullName), sortDirection, name.</summary>
+    [HttpGet]
+    [ProducesResponseType<PagedResult<PlayerDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAll(
+        Guid teamId,
+        [FromQuery] GetTeamPlayersQuery query,
+        [FromServices] IQueryHandler<GetTeamPlayersQuery, PagedResult<PlayerDto>> handler,
+        CancellationToken cancellationToken) =>
+        // El equipo sale de la ruta, aunque alguien mande ?teamId=... en el query string.
+        OkOrProblem(await handler.HandleAsync(query with { TeamId = teamId }, cancellationToken));
+
+    [HttpGet("{playerId:guid}")]
+    [ProducesResponseType<PlayerDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(
+        Guid teamId,
+        Guid playerId,
+        [FromServices] IQueryHandler<GetPlayerByIdQuery, PlayerDto> handler,
+        CancellationToken cancellationToken) =>
+        OkOrProblem(await handler.HandleAsync(new GetPlayerByIdQuery(teamId, playerId), cancellationToken));
+
     [HttpPost]
     [ProducesResponseType<CreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
