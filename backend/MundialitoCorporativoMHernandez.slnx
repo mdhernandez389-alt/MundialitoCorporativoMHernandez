@@ -5,4 +5,8 @@
     <Project Path="src/Mundialito.Domain/Mundialito.Domain.csproj" />
     <Project Path="src/Mundialito.Infrastructure/Mundialito.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mundialito.IntegrationTests/Mundialito.IntegrationTests.csproj" />
+    <Project Path="tests/Mundialito.UnitTests/Mundialito.UnitTests.csproj" />
+  </Folder>
 </Solution>

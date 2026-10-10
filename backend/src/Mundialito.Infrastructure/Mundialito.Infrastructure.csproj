@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\Mundialito.Application\Mundialito.Application.csproj" />
@@ -15,5 +15,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Solo el proyecto de tests ve los tipos internal; para el resto siguen ocultos. -->
+    <InternalsVisibleTo Include="Mundialito.IntegrationTests" />
+  </ItemGroup>
 
 </Project>

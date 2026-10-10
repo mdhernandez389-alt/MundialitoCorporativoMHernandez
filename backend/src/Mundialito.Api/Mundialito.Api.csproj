@@ -25,4 +25,9 @@
     <ProjectReference Include="..\Mundialito.Infrastructure\Mundialito.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Solo el proyecto de tests ve los tipos internal; para el resto siguen ocultos. -->
+    <InternalsVisibleTo Include="Mundialito.UnitTests" />
+  </ItemGroup>
+
 </Project>

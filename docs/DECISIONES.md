@@ -364,3 +364,35 @@ Infrastructure/Seeding/
 | Falla del seed | Excepción, no `Result` | Son datos fijos escritos por nosotros: si el dominio los rechaza es un bug y debe fallar ruidosamente. |
 | Qué se reintenta | `SqlException` directo **o envuelto** por EF Core en `InvalidOperationException` | Encontrado al probar: con SQL Server apagado llega un `SqlException` (error 258); mientras **arranca** acepta la conexión y la corta en el handshake, y EF Core lo envuelve ("transient failure", error 10054). Solo reintentar el primero tumbaba la API justo en el caso de Docker. |
 | Marcadores sembrados | Sistemas 3-1 Finanzas · Operaciones 4-3 Talento Humano · Sistemas 6-2 Operaciones | La tabla muestra un desempate del §8 apenas se levanta: Talento Humano y Finanzas a 0 puntos, separados por diferencia de gol (−1 vs −2). Los goleadores muestran una posición compartida (cuatro con 3 goles). |
+
+## 17. Pruebas (§15)
+
+```
+backend/tests/
+  Mundialito.UnitTests/          sin base de datos, milisegundos
+    Domain/   ResultTests, TeamStandingTests, StandingsUpdaterTests, MatchTests, TeamTests
+    Api/      IdempotencyFilterTests (almacén falso en memoria)
+  Mundialito.IntegrationTests/   SQL Server real y desechable (Testcontainers)
+    Persistence/  UnitOfWorkTests
+    Idempotency/  SqlIdempotencyStoreTests
+    Queries/      StandingsQueryTests
+```
+
+| Mínimo del §15 | Dónde se prueba |
+|---|---|
+| Tabla de posiciones | `StandingsUpdaterTests` (registrar, reintento, correcciones) + `StandingsQueryTests` (orden oficial en SQL, desempates, empate total, `sortBy` sin cambiar la posición) |
+| Cálculo de puntos | `TeamStandingTests` (3/1/0, combinación) |
+| Diferencia de gol | `TeamStandingTests` (positiva, negativa, cero, acumulada) |
+| Result Pattern | `ResultTests` |
+| Idempotencia | `IdempotencyFilterTests` (400/422/409, repetición sin ejecutar, liberación ante error, huella) + `SqlIdempotencyStoreTests` (ciclo de vida, 10 reservas simultáneas → una gana) |
+| Commit del UnitOfWork | `UnitOfWorkTests` (varios repositorios en un commit, sin commit no se guarda, `SaveChanges` bloqueado, duplicado → 409 + rollback, eventos con TraceId/CorrelationId, concurrencia con rowversion) |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Base para integración | **SQL Server con Testcontainers** | Lo que se prueba es propio de SQL Server: transacciones, `rowversion`, códigos 2601/547, `UPDLOCK/HOLDLOCK`. InMemory no tiene transacciones ni índices únicos y SQLite usa otros códigos y no tiene `rowversion`: los tests pasarían sin probar lo importante. El contenedor se crea y se destruye solo: no depende del entorno de quien corre los tests (solo de Docker). |
+| Framework | **xUnit + `Assert`** | El más usado en .NET; sin dependencias extra ni licencias (FluentAssertions pasó a licencia comercial en v8). |
+| Estructura | **Unit + Integration** | `dotnet test tests/Mundialito.UnitTests` corre en segundos sin Docker; los de integración se corren aparte. |
+| Nombres | En español, describiendo el comportamiento (`Una_correccion_revierte_...`) | Leer la lista de tests es leer las reglas del negocio. |
+| Aislamiento | Un contenedor por corrida; cada test usa nombres únicos | Los tests comparten la base sin pisarse; no hace falta limpiar entre tests. |
+| `internal` | `InternalsVisibleTo` solo para el proyecto de tests correspondiente | Se prueban `UnitOfWork`, `IdempotencyFilter` y el `DbContext` sin hacerlos públicos para el resto. |
+| Valorable: integración | Sí: la tabla real (Dapper + `RANK()`), la concurrencia del UoW y la reserva atómica se prueban contra SQL Server | Son las partes donde un mock "daría verde" sin probar nada. |
