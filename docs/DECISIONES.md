@@ -262,3 +262,37 @@ Infrastructure/Queries/                        (el CÓMO: Dapper + SQL)
 | Tabla: ¿calcular o leer? | **Leer** `TeamStandings` | Ya se actualiza en la misma transacción que cada resultado (paso 4); el GET no recorre partidos: su costo depende de los equipos, no de los partidos jugados. |
 | Goleadores: ¿calcular o guardar? | **Calcular** con `COUNT(*) … GROUP BY` sobre `Goals` | Los goles ya están normalizados e indexados por jugador. Guardar otro contador sería un dato derivado más que mantener sincronizado. Como el marcador se deriva de los goles, ambas tablas nunca se contradicen. |
 | Goleadores sin goles | No aparecen | Una tabla de goleadores lista a quien anotó. |
+
+## 14. Idempotencia en POST (§6)
+
+```
+Application/Abstractions/Idempotency/IIdempotencyStore.cs   contrato (reservar, completar, liberar)
+Infrastructure/Idempotency/                                  tabla IdempotencyRecords + SqlIdempotencyStore
+Api/Idempotency/                                             IdempotencyFilter + atributo [Idempotent]
+```
+
+Se aplica a los tres POST: `POST /api/teams`, `POST /api/teams/{teamId}/players` y `POST /api/matches`.
+PUT, PATCH y DELETE ya son idempotentes por diseño (pasos 4, 7 y 8).
+
+| Situación | Respuesta |
+|---|---|
+| Sin `Idempotency-Key` | `400` `Idempotency.KeyRequired` |
+| Key de más de 100 caracteres | `400` `Idempotency.KeyTooLong` |
+| Key nueva | Se ejecuta; si sale bien (2xx) se guarda la respuesta |
+| Misma key, mismo contenido, ya completada | **La respuesta original** (mismo status, cuerpo y `Location`) + header `Idempotent-Replayed: true`; no se ejecuta nada |
+| Misma key, **otro** contenido | `422` `Idempotency.KeyReused` |
+| Misma key, request original todavía ejecutándose | `409` `Idempotency.RequestInProgress` |
+| La acción falla (400/404/409 de negocio o excepción) | La reserva se libera: el cliente corrige y reintenta con la misma key |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Mecanismo | **Filtro de acción `[Idempotent]`** | Corre después del model binding: ve el body ya parseado y el resultado de la acción (status, body, `Location`) sin manipular streams. Es explícito: en el controller se ve qué endpoints son idempotentes. |
+| Header | **Obligatorio** en los POST → 400 si falta | Garantiza que ningún POST pueda duplicar registros. El frontend genera un UUID por envío de formulario; Postman usa `{{$guid}}`. |
+| Key reusada con otro contenido | **422** | Es lo que indica el borrador IETF `draft-ietf-httpapi-idempotency-key-header`. Separa "corrige tu request" (422) de "reintenta en un momento" (409). |
+| Concurrencia | **Reserva atómica + 409** | `INSERT ... WHERE NOT EXISTS` con `UPDLOCK, HOLDLOCK` en una sola sentencia: de dos requests simultáneos, solo uno inserta, sin excepciones de por medio. El otro recibe 409 y, al reintentar, la respuesta guardada. |
+| Huella del contenido | SHA-256 de método + ruta + body **ya parseado** | Un JSON con otros espacios o con los campos en otro orden cuenta como el mismo contenido. La ruta incluye los Ids (`/teams/{id}/players`). |
+| Qué respuestas se guardan | Solo las **2xx** | Un 400/404/409 de negocio no consumió nada: liberar la key permite corregir y reintentar. Repetir un request fallido simplemente vuelve a fallar igual. |
+| Persistencia | Tabla `IdempotencyRecords` (PK = key), creada por migración de EF, leída y escrita con **SQL directo** | No es un dato del dominio ni un Command: es un registro HTTP que debe confirmarse **antes** del Command (la reserva) y por separado de su transacción. La reserva atómica es una sola sentencia SQL que EF no puede expresar. No toca el DbContext, así que el §4 se mantiene. |
+| Guardado tras el commit | `CancellationToken.None` | Si el Command ya se confirmó, la respuesta se guarda aunque el cliente haya cortado: ese cliente es justo el que va a reintentar. |
+| Fallo entre el commit y el guardado (caída del proceso) | La key queda "en curso" → los reintentos reciben 409 | Falla del lado seguro: nunca duplica. Mejora posible (fuera de alcance): expirar reservas viejas. |
+| Alcance de la key | Global (PK = key) | La misma key en otro endpoint cambia la huella (la ruta) → 422. |

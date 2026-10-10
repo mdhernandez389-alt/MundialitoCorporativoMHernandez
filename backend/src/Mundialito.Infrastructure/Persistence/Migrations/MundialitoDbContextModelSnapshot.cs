@@ -181,6 +181,44 @@ namespace Mundialito.Infrastructure.Persistence.Migrations
                     b.ToTable("Teams", (string)null);
                 });
 
+            modelBuilder.Entity("Mundialito.Infrastructure.Idempotency.IdempotencyRecord", b =>
+                {
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResponseLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("ResponseStatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("IdempotencyKey");
+
+                    b.ToTable("IdempotencyRecords", (string)null);
+                });
+
             modelBuilder.Entity("Mundialito.Infrastructure.Persistence.DomainEventRecord", b =>
                 {
                     b.Property<Guid>("Id")

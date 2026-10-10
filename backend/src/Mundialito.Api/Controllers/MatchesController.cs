@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Mundialito.Api.Contracts;
+using Mundialito.Api.Idempotency;
 using Mundialito.Application.Abstractions.Messaging;
 using Mundialito.Application.Abstractions.Querying;
 using Mundialito.Application.Matches.Commands.RegisterMatchResult;
@@ -36,6 +37,7 @@ public sealed class MatchesController : ApiController
         OkOrProblem(await handler.HandleAsync(new GetMatchByIdQuery(matchId), cancellationToken));
 
     [HttpPost]
+    [Idempotent]
     [ProducesResponseType<CreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

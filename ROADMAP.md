@@ -18,8 +18,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | ✅ |
 | 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ✅ |
 | 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ✅ |
-| 11 | Idempotencia en POST (Idempotency-Key) | §6 | 🔜 |
-| 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ⬜ |
+| 11 | Idempotencia en POST (Idempotency-Key) | §6 | ✅ |
+| 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | 🔜 |
 | 13 | Seed de datos | §9 | ⬜ |
 | 14 | Pruebas unitarias | §15 | ⬜ |
 | 15 | Frontend Next.js | §11 | ⬜ |
@@ -153,16 +153,22 @@ Tabla ordenada por puntos, diferencia de gol y goles a favor; goleadores. Ambas 
 
 **Verificado:** escenario armado con dos equipos a 6 puntos donde el de más goles a favor tiene peor diferencia: queda 2º (gana la diferencia, como pide el §8). Empate total → posición compartida. `sortBy` y filtros no alteran la posición. Goleadores: conteo, orden, empates y filtro por equipo.
 
-## 🔜 11. Idempotencia
+## ✅ 11. Idempotencia
 
 Header `Idempotency-Key`, key persistida, sin registros duplicados, misma respuesta ante una repetición.
 
-**Decisiones a tomar:**
-- ¿Middleware o filtro de acción?
-- Misma key con distinto contenido: ¿409 o 422?
-- Dos requests con la misma key al mismo tiempo.
+| Decisión | Elegido |
+|---|---|
+| Mecanismo | Filtro de acción `[Idempotent]` en los tres POST |
+| Header | Obligatorio → 400 si falta |
+| Misma key, otro contenido | 422 (borrador IETF) |
+| Requests simultáneos | Reserva atómica (`INSERT ... WHERE NOT EXISTS` con bloqueo) → el segundo recibe 409 |
 
-## ⬜ 12. Observabilidad
+`IIdempotencyStore` (Application), `SqlIdempotencyStore` + tabla `IdempotencyRecords` (Infrastructure, migración `AddIdempotencyRecords`), `IdempotencyFilter` + `[Idempotent]` en los tres POST (Api).
+
+**Verificado:** 20 comprobaciones contra la API y SQL Server: sin key / key larga → 400 sin crear nada; repetición → mismo 201, mismo id y `Location`, header `Idempotent-Replayed`; mismo contenido en otro orden → repetición; otro contenido u otro endpoint → 422; un 409 de negocio libera la key; **10 requests simultáneos con la misma key → un solo equipo** (201 ×5 con el mismo id, 409 ×5).
+
+## 🔜 12. Observabilidad
 
 Logs estructurados, CorrelationId y TraceId por request, duración, eventos de dominio loggeados. Opcional valorable: OpenTelemetry con exportación a Jaeger.
 

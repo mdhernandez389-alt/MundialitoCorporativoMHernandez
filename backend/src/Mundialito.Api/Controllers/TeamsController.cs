@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Mundialito.Api.Contracts;
+using Mundialito.Api.Idempotency;
 using Mundialito.Application.Abstractions.Messaging;
 using Mundialito.Application.Abstractions.Querying;
 using Mundialito.Application.Teams.Commands.CreateTeam;
@@ -38,6 +39,7 @@ public sealed class TeamsController : ApiController
         OkOrProblem(await handler.HandleAsync(new GetTeamByIdQuery(teamId), cancellationToken));
 
     [HttpPost]
+    [Idempotent]
     [ProducesResponseType<CreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]

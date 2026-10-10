@@ -2,11 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Mundialito.Application;
+using Mundialito.Application.Abstractions.Idempotency;
 using Mundialito.Application.Abstractions.Persistence;
 using Mundialito.Application.Matches;
 using Mundialito.Application.Players;
 using Mundialito.Application.Standings;
 using Mundialito.Application.Teams;
+using Mundialito.Infrastructure.Idempotency;
 using Mundialito.Infrastructure.Persistence;
 using Mundialito.Infrastructure.Persistence.Repositories;
 using Mundialito.Infrastructure.Queries.Common;
@@ -38,6 +40,9 @@ public static class DependencyInjection
         // Lado Query (§3): exclusivamente Dapper. Los handlers de lectura viven aquí, junto a su SQL.
         services.AddSingleton(new DbConnectionFactory(connectionString));
         services.AddHandlersFromAssembly(typeof(DependencyInjection).Assembly);
+
+        // Idempotencia de los POST (§6).
+        services.AddScoped<IIdempotencyStore, SqlIdempotencyStore>();
 
         return services;
     }
