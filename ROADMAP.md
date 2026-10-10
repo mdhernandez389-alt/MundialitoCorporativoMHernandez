@@ -20,8 +20,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ✅ |
 | 11 | Idempotencia en POST (Idempotency-Key) | §6 | ✅ |
 | 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ✅ |
-| 13 | Seed de datos | §9 | 🔜 |
-| 14 | Pruebas unitarias | §15 | ⬜ |
+| 13 | Seed de datos | §9 | ✅ |
+| 14 | Pruebas unitarias | §15 | 🔜 |
 | 15 | Frontend Next.js | §11 | ⬜ |
 | 16 | Dockerización | §12 | ⬜ |
 | 17 | Colección de Postman | §14 | ⬜ |
@@ -184,11 +184,21 @@ Logs estructurados, CorrelationId y TraceId por request, duración, eventos de d
 
 **Contenedores de desarrollo:** `mundialito-mh-seq` (http://localhost:5341) y `mundialito-mh-jaeger` (http://localhost:16686).
 
-## 🔜 13. Seed
+## ✅ 13. Seed
 
 4 equipos, 5 jugadores por equipo, 6 partidos, 3 con resultado. En Infrastructure, automático si la base está vacía.
 
-## ⬜ 14. Pruebas unitarias
+| Decisión | Elegido |
+|---|---|
+| Cómo se crean los datos | Dominio + UnitOfWork, un solo commit (tabla calculada con la regla real, eventos registrados) |
+| Migraciones | Al iniciar, con reintentos mientras SQL Server arranca |
+| Fechas | Relativas al día del seed (jugados en el pasado, programados en el futuro) |
+
+`DatabaseInitializer` (`IHostedService`: reintentos → migraciones → seed) y `DataSeeder` (dominio + UnitOfWork, un commit).
+
+**Verificado desde cero:** base borrada y API arrancada con SQL Server apagado → 6 reintentos (servidor apagado y luego arrancando) → 4 migraciones → seed con 7 eventos de dominio → recién entonces la API escucha. 4 equipos × 5 jugadores, 3 partidos jugados en el pasado y 3 programados en el futuro; la tabla muestra el desempate por diferencia de gol. Al reiniciar con datos, no vuelve a sembrar.
+
+## 🔜 14. Pruebas unitarias
 
 Mínimo: tabla de posiciones, cálculo de puntos, diferencia de gol, Result Pattern, idempotencia y comportamiento de commit del UnitOfWork.
 

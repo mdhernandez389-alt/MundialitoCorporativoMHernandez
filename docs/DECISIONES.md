@@ -336,3 +336,31 @@ response: X-Correlation-Id, X-Trace-Id (y "traceId" en los ProblemDetails: el mi
 | Niveles | Debug: detalle interno (cambios por commit). Information: requests exitosos, eventos, repeticiones idempotentes. Warning: commit rechazado por la base. Error: excepciones. El nivel del log de cada request depende de su status (ver `GetRequestLogLevel`). | §7: "niveles correctos". |
 | Ruido | `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore` y `System.Net.Http` en Warning; `Mundialito` en Debug solo en desarrollo | Los logs muestran lo de la aplicación, no el detalle interno del framework. |
 | Formato | Producción/Docker: JSON compacto. Desarrollo: texto legible con `corr=` y `trace=` | JSON para que lo procesen máquinas (Seq, `docker logs`); texto para leer en la terminal. |
+
+## 16. Seed de datos (§9)
+
+```
+Infrastructure/Seeding/
+  DatabaseInitializer.cs   IHostedService: espera a SQL Server, migra, siembra si está vacía
+  DataSeeder.cs            4 equipos × 5 jugadores, 6 partidos (todos contra todos), 3 con resultado
+```
+
+| Requisito del §9 | Cómo se cumple |
+|---|---|
+| Automático al iniciar | `IHostedService`: corre antes de que la API acepte requests |
+| Si la DB está vacía | "Vacía" = sin equipos (sin equipos no puede haber jugadores, partidos ni tabla) |
+| 4 / 5 / 6 / 3 | Sistemas, Finanzas, Operaciones, Talento Humano; dorsales 9, 10, 8, 5, 1; todos contra todos; los 3 primeros jugados |
+| En Infrastructure | `Infrastructure/Seeding/` |
+| Funcionar con Docker | Migraciones al iniciar con reintentos: la API espera a que SQL Server esté listo |
+| Probar la tabla de inmediato | La tabla se calcula con `StandingsUpdater` en el mismo commit del seed |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Cómo se crean los datos | **Dominio + UnitOfWork**, un solo `CommitAsync` | El mismo camino que la API: fábricas, `StandingsUpdater`, repositorios. Los datos no pueden ser inválidos, la tabla sale de la regla real y se registran los eventos (4 `TeamCreated` + 3 `MatchResultRegistered`). Además, la guardia del paso 6 impide guardar con el DbContext fuera del UoW. |
+| Todo o nada | Un único commit | Si algo falla no queda una base "a medias" que el siguiente arranque daría por sembrada (porque ya tendría equipos). |
+| Migraciones | **Al iniciar, con reintentos** (hasta 10, pausas de 2 a 10 s) | `docker-compose up` funciona desde cero sin ejecutar `dotnet ef`. Que SQL Server no responda al arrancar es una condición externa esperada; agotados los intentos, la API no arranca (mejor que arrancar sin base). EF Core usa un lock propio: dos instancias no migran a la vez. |
+| Fechas | **Relativas al día del seed** (−14, −7, −3, +3, +7, +14 días, 18:00 UTC) | Siempre hay partidos pasados y próximos para los filtros por fecha, sin importar cuándo se pruebe. |
+| Goleadores | Cada gol se asigna rotando entre el 9, el 10 y el 8 de su equipo | La tabla de goleadores tiene variedad y empates para mostrar la posición compartida. |
+| Falla del seed | Excepción, no `Result` | Son datos fijos escritos por nosotros: si el dominio los rechaza es un bug y debe fallar ruidosamente. |
+| Qué se reintenta | `SqlException` directo **o envuelto** por EF Core en `InvalidOperationException` | Encontrado al probar: con SQL Server apagado llega un `SqlException` (error 258); mientras **arranca** acepta la conexión y la corta en el handshake, y EF Core lo envuelve ("transient failure", error 10054). Solo reintentar el primero tumbaba la API justo en el caso de Docker. |
+| Marcadores sembrados | Sistemas 3-1 Finanzas · Operaciones 4-3 Talento Humano · Sistemas 6-2 Operaciones | La tabla muestra un desempate del §8 apenas se levanta: Talento Humano y Finanzas a 0 puntos, separados por diferencia de gol (−1 vs −2). Los goleadores muestran una posición compartida (cuatro con 3 goles). |

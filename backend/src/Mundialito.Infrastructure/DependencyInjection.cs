@@ -12,6 +12,7 @@ using Mundialito.Infrastructure.Idempotency;
 using Mundialito.Infrastructure.Persistence;
 using Mundialito.Infrastructure.Persistence.Repositories;
 using Mundialito.Infrastructure.Queries.Common;
+using Mundialito.Infrastructure.Seeding;
 
 namespace Mundialito.Infrastructure;
 
@@ -43,6 +44,10 @@ public static class DependencyInjection
 
         // Idempotencia de los POST (§6).
         services.AddScoped<IIdempotencyStore, SqlIdempotencyStore>();
+
+        // Al arrancar: migraciones (con reintentos) y seed si la base está vacía (§9).
+        services.AddScoped<DataSeeder>();
+        services.AddHostedService<DatabaseInitializer>();
 
         return services;
     }
