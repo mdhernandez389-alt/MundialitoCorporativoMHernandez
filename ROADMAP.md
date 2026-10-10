@@ -19,8 +19,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ✅ |
 | 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ✅ |
 | 11 | Idempotencia en POST (Idempotency-Key) | §6 | ✅ |
-| 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | 🔜 |
-| 13 | Seed de datos | §9 | ⬜ |
+| 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ✅ |
+| 13 | Seed de datos | §9 | 🔜 |
 | 14 | Pruebas unitarias | §15 | ⬜ |
 | 15 | Frontend Next.js | §11 | ⬜ |
 | 16 | Dockerización | §12 | ⬜ |
@@ -168,15 +168,23 @@ Header `Idempotency-Key`, key persistida, sin registros duplicados, misma respue
 
 **Verificado:** 20 comprobaciones contra la API y SQL Server: sin key / key larga → 400 sin crear nada; repetición → mismo 201, mismo id y `Location`, header `Idempotent-Replayed`; mismo contenido en otro orden → repetición; otro contenido u otro endpoint → 422; un 409 de negocio libera la key; **10 requests simultáneos con la misma key → un solo equipo** (201 ×5 con el mismo id, 409 ×5).
 
-## 🔜 12. Observabilidad
+## ✅ 12. Observabilidad
 
 Logs estructurados, CorrelationId y TraceId por request, duración, eventos de dominio loggeados. Opcional valorable: OpenTelemetry con exportación a Jaeger.
 
-**Decisiones a tomar:**
-- ¿Solo `ILogger` o Serilog?
-- ¿Dónde se ven los logs y los traces? (Consola, Seq, Jaeger.)
+| Decisión | Elegido |
+|---|---|
+| Motor de logs | Serilog detrás de `ILogger<T>` |
+| Dónde se ven | Seq (logs) + Jaeger vía OpenTelemetry (trazas); consola siempre |
+| CorrelationId vs TraceId | Separados y enlazados: en cada log, en los headers de respuesta y en cada evento de dominio guardado |
 
-## ⬜ 13. Seed
+`CorrelationIdMiddleware` (headers `X-Correlation-Id` / `X-Trace-Id`), Serilog con log por request (duración y nivel según status), OpenTelemetry (ASP.NET Core + SqlClient → OTLP), `traceId` de los ProblemDetails unificado, eventos de dominio con `TraceId`/`CorrelationId` (migración `AddTraceabilityToDomainEvents`) y marcados en la traza.
+
+**Verificado:** 22 comprobaciones siguiendo un mismo TraceId por headers, ProblemDetails, consola, tabla `DomainEvents`, Seq y Jaeger (request + 5 spans SQL + evento de dominio). CorrelationId inválido o largo → se genera otro. Niveles: 2xx INF, 4xx WRN, Debug del UnitOfWork solo en desarrollo.
+
+**Contenedores de desarrollo:** `mundialito-mh-seq` (http://localhost:5341) y `mundialito-mh-jaeger` (http://localhost:16686).
+
+## 🔜 13. Seed
 
 4 equipos, 5 jugadores por equipo, 6 partidos, 3 con resultado. En Infrastructure, automático si la base está vacía.
 

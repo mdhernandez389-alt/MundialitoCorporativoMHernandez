@@ -21,12 +21,20 @@ internal sealed class DomainEventRecord
 
     public required DateTime OccurredOnUtc { get; init; }
 
-    public static DomainEventRecord From(IDomainEvent domainEvent) => new()
+    /// <summary>TraceId W3C del request que generó el evento: el mismo de los logs y de Jaeger.</summary>
+    public string? TraceId { get; init; }
+
+    /// <summary>CorrelationId del request (el que envió el cliente o uno generado).</summary>
+    public string? CorrelationId { get; init; }
+
+    public static DomainEventRecord From(IDomainEvent domainEvent, string? traceId, string? correlationId) => new()
     {
         Id = domainEvent.EventId,
         Type = domainEvent.GetType().Name,
         // GetType() para serializar el evento concreto (con sus datos), no solo la interfaz.
         Payload = JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
-        OccurredOnUtc = domainEvent.OccurredOnUtc
+        OccurredOnUtc = domainEvent.OccurredOnUtc,
+        TraceId = traceId,
+        CorrelationId = correlationId
     };
 }

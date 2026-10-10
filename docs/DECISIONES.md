@@ -296,3 +296,43 @@ PUT, PATCH y DELETE ya son idempotentes por diseño (pasos 4, 7 y 8).
 | Guardado tras el commit | `CancellationToken.None` | Si el Command ya se confirmó, la respuesta se guarda aunque el cliente haya cortado: ese cliente es justo el que va a reintentar. |
 | Fallo entre el commit y el guardado (caída del proceso) | La key queda "en curso" → los reintentos reciben 409 | Falla del lado seguro: nunca duplica. Mejora posible (fuera de alcance): expirar reservas viejas. |
 | Alcance de la key | Global (PK = key) | La misma key en otro endpoint cambia la huella (la ruta) → 422. |
+
+## 15. Observabilidad: logs, CorrelationId/TraceId y trazas (§7)
+
+```
+Api/Observability/
+  ObservabilityExtensions.cs   AddObservability(): Serilog + OpenTelemetry · UseObservability(): middleware + log por request
+  CorrelationIdMiddleware.cs   X-Correlation-Id / X-Trace-Id, scope de logs, tag en la traza
+Application/Abstractions/Observability/ICorrelationContext.cs
+Infrastructure: UnitOfWork sella cada evento con TraceId + CorrelationId (columnas nuevas en DomainEvents)
+```
+
+**Flujo de un request:**
+
+```
+request ──► CorrelationIdMiddleware ── CorrelationId (del cliente o nuevo) + TraceId (W3C)
+              │                        → scope de logs, tag en la traza, headers de respuesta
+              ▼
+            UseSerilogRequestLogging ── al terminar: "HTTP POST /api/teams respondió 201 en 38.2 ms"
+              ▼
+            ExceptionHandler → controller → handler → UnitOfWork
+              │  cada log lleva CorrelationId + TraceId
+              │  cada consulta SQL (EF Core y Dapper) es un span en la traza
+              │  cada evento de dominio: fila con TraceId/CorrelationId + log + evento en la traza
+              ▼
+response: X-Correlation-Id, X-Trace-Id (y "traceId" en los ProblemDetails: el mismo valor)
+```
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Motor de logs | **Serilog**, detrás de `ILogger<T>` | El código de la aplicación no se acopla a Serilog. Aporta salida JSON estructurada, sinks (consola, Seq), configuración por appsettings y `UseSerilogRequestLogging` (una línea por request con duración). |
+| Dónde se ven | **Seq** (logs) + **Jaeger** vía OpenTelemetry/OTLP (trazas) | Cubre el "opcional valorable" del §7. Desde un log en Seq se salta a la traza en Jaeger por el TraceId. Sin configurarlos, la API solo escribe a consola y sigue generando TraceIds. |
+| CorrelationId vs TraceId | **Separados y enlazados** | TraceId = W3C de cada request (Jaeger, logs, ProblemDetails). CorrelationId = el del cliente en `X-Correlation-Id` (puede agrupar varios requests de una acción) o uno nuevo. Los dos van en cada log, en los headers de respuesta y en cada evento guardado. |
+| `traceId` en ProblemDetails | Se reemplaza el de ASP.NET (`00-<trace>-<span>-01`) por el TraceId solo | Un único valor en header, body, logs, Seq y Jaeger: se copia y se busca tal cual. |
+| CorrelationId del cliente | Solo si tiene ≤ 100 caracteres y únicamente letras, dígitos, `-`, `_`, `.` | Termina en logs y headers: así nadie puede inyectar saltos de línea en los logs ni headers falsos. Si no es válido se genera uno nuevo. |
+| Orden del pipeline | Observabilidad → ExceptionHandler → resto | El log de la excepción (500) queda dentro del CorrelationId, y el log de duración no la duplica: ve el 500 ya resuelto. |
+| Trazabilidad de eventos | Columnas `TraceId` y `CorrelationId` en `DomainEvents` + `ActivityEvent` en la traza | "Mantener trazabilidad" (§7): de un evento guardado se llega a su request, a sus logs y a su traza. |
+| Datos sensibles | No se loggean bodies, query strings, headers (salvo los de correlación) ni la cadena de conexión. Las trazas SQL llevan el texto con parámetros (`@Name`), nunca sus valores | §7: "no loggear datos sensibles". |
+| Niveles | Debug: detalle interno (cambios por commit). Information: requests exitosos, eventos, repeticiones idempotentes. Warning: commit rechazado por la base. Error: excepciones. El nivel del log de cada request depende de su status (ver `GetRequestLogLevel`). | §7: "niveles correctos". |
+| Ruido | `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore` y `System.Net.Http` en Warning; `Mundialito` en Debug solo en desarrollo | Los logs muestran lo de la aplicación, no el detalle interno del framework. |
+| Formato | Producción/Docker: JSON compacto. Desarrollo: texto legible con `corr=` y `trace=` | JSON para que lo procesen máquinas (Seq, `docker logs`); texto para leer en la terminal. |

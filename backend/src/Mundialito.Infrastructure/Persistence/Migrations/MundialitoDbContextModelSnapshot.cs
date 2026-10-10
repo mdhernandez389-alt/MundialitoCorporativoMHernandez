@@ -224,12 +224,21 @@ namespace Mundialito.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("OccurredOnUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Payload")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nchar(32)")
+                        .IsFixedLength();
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -239,6 +248,8 @@ namespace Mundialito.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OccurredOnUtc");
+
+                    b.HasIndex("TraceId");
 
                     b.ToTable("DomainEvents", (string)null);
                 });

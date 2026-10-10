@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Mundialito.Application.Abstractions.Observability;
 using Mundialito.Application.Abstractions.Persistence;
 using Mundialito.Domain.Abstractions;
 using Mundialito.Domain.Players;
@@ -14,7 +16,10 @@ namespace Mundialito.Infrastructure.Persistence;
 /// Implementación del §4: abre la transacción, registra los eventos de dominio, guarda y confirma.
 /// Comparte el <see cref="MundialitoDbContext"/> (scoped) con los repositorios, así confirma todo lo que ellos rastrearon.
 /// </summary>
-internal sealed class UnitOfWork(MundialitoDbContext dbContext, ILogger<UnitOfWork> logger) : IUnitOfWork
+internal sealed class UnitOfWork(
+    MundialitoDbContext dbContext,
+    ICorrelationContext correlation,
+    ILogger<UnitOfWork> logger) : IUnitOfWork
 {
     // Números de error de SQL Server que significan "chocaste con otro request", no "la base falló".
     private const int UniqueIndexViolation = 2601;
@@ -35,6 +40,11 @@ internal sealed class UnitOfWork(MundialitoDbContext dbContext, ILogger<UnitOfWo
     {
         var domainEvents = RecordDomainEvents();
 
+        logger.LogDebug(
+            "Confirmando {ChangeCount} cambios y {EventCount} eventos de dominio",
+            dbContext.ChangeTracker.Entries().Count(entry => entry.State is not EntityState.Unchanged),
+            domainEvents.Count);
+
         // Si no se llega al commit (error o excepción), el "await using" hace rollback al salir.
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -50,13 +60,21 @@ internal sealed class UnitOfWork(MundialitoDbContext dbContext, ILogger<UnitOfWo
         }
 
         // Solo después del commit: un evento loggeado es un evento que de verdad ocurrió.
+        // Cada log lleva el TraceId y el CorrelationId del request (los agrega el pipeline de logging).
         foreach (var domainEvent in domainEvents)
         {
+            var eventType = domainEvent.GetType().Name;
+
             logger.LogInformation(
                 "Evento de dominio {EventType} registrado ({EventId}): {DomainEvent}",
-                domainEvent.GetType().Name,
+                eventType,
                 domainEvent.EventId,
                 domainEvent);
+
+            // También queda marcado dentro de la traza: en Jaeger se ve en qué punto del request ocurrió.
+            Activity.Current?.AddEvent(new ActivityEvent(
+                eventType,
+                tags: new ActivityTagsCollection { ["domain_event.id"] = domainEvent.EventId.ToString() }));
         }
 
         return Result.Success();
@@ -78,7 +96,10 @@ internal sealed class UnitOfWork(MundialitoDbContext dbContext, ILogger<UnitOfWo
         // Se limpian para que un segundo commit en el mismo request no los registre dos veces.
         entitiesWithEvents.ForEach(entity => entity.ClearDomainEvents());
 
-        dbContext.DomainEvents.AddRange(domainEvents.Select(DomainEventRecord.From));
+        // Cada evento queda sellado con el request que lo generó (§7: "mantener trazabilidad").
+        var traceId = Activity.Current?.TraceId.ToHexString();
+        dbContext.DomainEvents.AddRange(
+            domainEvents.Select(domainEvent => DomainEventRecord.From(domainEvent, traceId, correlation.CorrelationId)));
 
         return domainEvents;
     }

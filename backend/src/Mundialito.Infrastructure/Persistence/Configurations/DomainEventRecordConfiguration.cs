@@ -15,6 +15,11 @@ internal sealed class DomainEventRecordConfiguration : IEntityTypeConfiguration<
         builder.Property(e => e.Type).HasMaxLength(DomainEventRecord.TypeMaxLength).IsRequired();
         builder.Property(e => e.Payload).IsRequired();
 
+        // TraceId W3C: 32 caracteres hexadecimales. Con él se cruza el evento con sus logs y su traza en Jaeger.
+        builder.Property(e => e.TraceId).HasMaxLength(32).IsFixedLength();
+        builder.Property(e => e.CorrelationId).HasMaxLength(100);
+
         builder.HasIndex(e => e.OccurredOnUtc);
+        builder.HasIndex(e => e.TraceId);
     }
 }
