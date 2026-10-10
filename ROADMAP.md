@@ -6,11 +6,6 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 - **Decisiones:** las ya tomadas, con su justificación completa, están en [docs/DECISIONES.md](docs/DECISIONES.md).
 - **Req.:** sección de los requisitos ([docs/ENUNCIADO.md](docs/ENUNCIADO.md)) que cubre el paso.
 
-> **⏸ Pendiente al retomar (paso 10):** completar `OfficialOrder` en
-> [GetStandingsHandler.cs](backend/src/Mundialito.Infrastructure/Queries/Standings/GetStandingsHandler.cs)
-> (busca `TODO(human)`): el `ORDER BY` del `RANK()` con los tres criterios del §8.
-> Mientras esté vacío, `GET /api/standings` falla con 500. Después: probar tabla y goleadores, y cerrar el paso 10.
-
 | # | Paso | Req. | Estado |
 |---|---|---|---|
 | 1 | Elegir arquitectura | §2, §3 | ✅ |
@@ -22,8 +17,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 7 | Commands: equipos, jugadores, partidos, resultados | §3, §8 | ✅ |
 | 8 | Api: controllers y mapeo Result → HTTP | §5, §6 | ✅ |
 | 9 | Queries con Dapper: filtros, paginación, ordenamiento | §3, §10 | ✅ |
-| 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | 🔜 |
-| 11 | Idempotencia en POST (Idempotency-Key) | §6 | ⬜ |
+| 10 | Lógica del torneo: tabla de posiciones y goleadores | §8 | ✅ |
+| 11 | Idempotencia en POST (Idempotency-Key) | §6 | 🔜 |
 | 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ⬜ |
 | 13 | Seed de datos | §9 | ⬜ |
 | 14 | Pruebas unitarias | §15 | ⬜ |
@@ -145,7 +140,7 @@ Queries y DTOs en Application; handlers con Dapper en `Infrastructure/Queries/` 
 | Handlers de lectura | Query y DTO en Application; handler con Dapper y SQL en Infrastructure |
 | Total de registros | 2 consultas en 1 viaje (`QueryMultiple`) |
 
-## 🔜 10. Lógica del torneo
+## ✅ 10. Lógica del torneo
 
 Tabla ordenada por puntos, diferencia de gol y goles a favor; goleadores. Ambas consultas optimizadas con Dapper.
 
@@ -154,10 +149,11 @@ Tabla ordenada por puntos, diferencia de gol y goles a favor; goleadores. Ambas 
 | Orden fijo (§8) vs `sortBy` (§10) | Columna `position` con el orden oficial (default) + `sortBy` para otras vistas |
 | Empate total | Posición compartida (`RANK`) |
 
-**Estado:** contratos, handlers (`GetStandingsHandler`, `GetScorersHandler`) y endpoints (`GET /api/standings`, `GET /api/scorers`) escritos.
-Falta el `TODO(human)` de `OfficialOrder` y las pruebas.
+`GET /api/standings` (lee `TeamStandings`; `position` con `RANK()` sobre `calc.Points DESC, calc.GoalDifference DESC, s.GoalsFor DESC`) y `GET /api/scorers` (`COUNT` de `Goals` por jugador con `RANK` por goles), ambos paginados con filtros y `sortBy`.
 
-## ⬜ 11. Idempotencia
+**Verificado:** escenario armado con dos equipos a 6 puntos donde el de más goles a favor tiene peor diferencia: queda 2º (gana la diferencia, como pide el §8). Empate total → posición compartida. `sortBy` y filtros no alteran la posición. Goleadores: conteo, orden, empates y filtro por equipo.
+
+## 🔜 11. Idempotencia
 
 Header `Idempotency-Key`, key persistida, sin registros duplicados, misma respuesta ante una repetición.
 

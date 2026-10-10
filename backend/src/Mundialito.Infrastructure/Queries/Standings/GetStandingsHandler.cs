@@ -16,8 +16,7 @@ internal sealed class GetStandingsHandler(DbConnectionFactory connections)
     : IQueryHandler<GetStandingsQuery, PagedResult<StandingDto>>
 {
     /// <summary>Criterio oficial del §8 para calcular la posición. Columnas disponibles: ver el FROM.</summary>
-    // TODO(human): el ORDER BY del RANK con los tres criterios del §8.
-    private const string OfficialOrder = "";
+    private const string OfficialOrder = "calc.Points DESC, calc.GoalDifference DESC, s.GoalsFor DESC";
 
     // La posición se calcula en una subconsulta sobre TODOS los equipos, antes de filtrar o paginar:
     // filtrar por nombre no convierte al 5º en 1º.
