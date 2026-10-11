@@ -396,3 +396,44 @@ backend/tests/
 | Aislamiento | Un contenedor por corrida; cada test usa nombres únicos | Los tests comparten la base sin pisarse; no hace falta limpiar entre tests. |
 | `internal` | `InternalsVisibleTo` solo para el proyecto de tests correspondiente | Se prueban `UnitOfWork`, `IdempotencyFilter` y el `DbContext` sin hacerlos públicos para el resto. |
 | Valorable: integración | Sí: la tabla real (Dapper + `RANK()`), la concurrencia del UoW y la reserva atómica se prueban contra SQL Server | Son las partes donde un mock "daría verde" sin probar nada. |
+
+## 18. Frontend Next.js (§11)
+
+```
+frontend/src/
+  lib/api/        types.ts (contratos), client.ts (fetch → ApiResult), endpoints.ts (una función por endpoint)
+  lib/            search-params.ts (filtros/orden/página en la URL), format.ts (fechas en hora de El Salvador)
+  components/     ErrorAlert, Pagination, SortableHeader, FilterForm, TeamSelect, Nav
+  app/
+    page.tsx               Tabla de posiciones
+    scorers/               Goleadores
+    teams/                 Equipos (filtros, orden, paginación) + crear equipo (Server Action, Idempotency-Key)
+    teams/[id]/            Equipo y sus jugadores
+    matches/               Partidos (desde/hasta, equipo, estado)
+    matches/[id]/          Detalle + registrar/corregir resultado (Server Action, PUT)
+    loading.tsx · error.tsx · not-found.tsx
+```
+
+| Requisito del §11 | Dónde |
+|---|---|
+| Visualización equipos | `/teams`, `/teams/[id]` |
+| Visualización partidos | `/matches`, `/matches/[id]` |
+| Registro de resultados | `/matches/[id]` (registrar y corregir) |
+| Tabla de posiciones | `/` |
+| Goleadores | `/scorers` |
+| Filtros + paginación | En todos los listados, con orden por columna |
+| Manejo de errores | `ApiResult` + `ErrorAlert` (mensaje, código, traceId); `notFound()` para 404; `error.tsx` para lo inesperado |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Dónde se llama a la API | **Servidor de Next**: Server Components para leer, Server Actions para escribir | El navegador nunca habla con la API: sin CORS, la URL de la API no viaja al bundle (`API_URL` sin `NEXT_PUBLIC_`) y en Docker se usa la red interna. Las páginas llegan con los datos ya renderizados. |
+| Organización | **Capa de cliente API** (`lib/api`) | Las páginas no hacen `fetch`: llaman funciones tipadas que devuelven `ApiResult<T>` (el Result Pattern del backend del lado del frontend). Si la API cambia, se toca `lib/api`; `server-only` impide importarla desde el navegador. |
+| Filtros, orden y página | **En la URL** (`?status=Played&pageNumber=2`), con `next/form` (GET) y `<Link>` | Se pueden compartir y el "atrás" funciona; el servidor renderiza directamente lo pedido. Los filtros funcionan sin JavaScript. |
+| Idempotency-Key | Generada en el servidor al mostrar el formulario (`connection()` + `crypto.randomUUID()`), oculta en el `<form>` | Un doble envío o un reintento reusa la misma key → la API devuelve el mismo equipo. Tras el éxito se redirige y el formulario nuevo trae otra key. Un error de negocio libera la key en la API, así que corregir y reenviar funciona. |
+| Registro de resultado | Un campo de goles por jugador; la Server Action lo convierte en la lista de Ids que espera la API | El usuario piensa "Carlos hizo 2"; la API recibe `[carlos, carlos]`. El formulario viene precargado con el resultado actual: guardar sin cambios es idempotente y cambiar algo lo corrige. |
+| Cache Components (Next 16) | Activo (default de la plantilla); `loading.tsx` como `<Suspense>` de las páginas | Las lecturas a la API son dinámicas por request. Build: todas las páginas son *Partial Prerender* (esqueleto estático + datos transmitidos). |
+| Errores esperados vs. inesperados | Esperados (400/404/409/422, API caída) → `ErrorAlert` en la página; inesperados → `error.tsx` | La API caída no rompe la página: se muestra "No se pudo conectar" (`Api.Unavailable`). |
+| Fechas | Se muestran en `America/El_Salvador`, explícito | El servidor de Next puede correr en UTC (Docker); sin zona fija, la hora mostrada dependería de dónde corre. |
+| Estilos | Tailwind mínimo, fuente del sistema | Lo visual no se evalúa. Sin fuentes de Google: el build de Docker no depende de descargarlas. |
+| 404 con streaming | La página "No encontrado" se muestra, pero con status HTTP 200 | Con Partial Prerender el esqueleto se envía antes de consultar la API; una vez enviado el primer byte, el status no se puede cambiar. Next incluye el componente not-found en el payload y lo muestra al hidratar. El 404 "real" lo da la API (que es lo que se evalúa); el frontend es la presentación. |
+| `toProblem` | Lee el ProblemDetails con respaldo para cada campo | Un error de la API nunca rompe la página: si el cuerpo no es JSON (un proxy, un 502), igual se muestra un error con el status real. |

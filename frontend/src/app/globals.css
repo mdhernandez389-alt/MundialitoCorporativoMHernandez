@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Lo visual no se evalúa (§11): estilos mínimos para que las tablas se lean. */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #ffffff;
+  color: #171717;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+tbody tr {
+  border-top: 1px solid #e5e7eb;
+}
+
+input,
+select {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+button {
+  border: 1px solid #374151;
+  border-radius: 4px;
+  padding: 4px 12px;
+  background: #111827;
+  color: #ffffff;
+}
+
+button:disabled {
+  opacity: 0.5;
+}

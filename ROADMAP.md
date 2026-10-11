@@ -22,8 +22,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 12 | Observabilidad: logs, CorrelationId/TraceId, tracing, eventos | §7 | ✅ |
 | 13 | Seed de datos | §9 | ✅ |
 | 14 | Pruebas unitarias | §15 | ✅ |
-| 15 | Frontend Next.js | §11 | 🔜 |
-| 16 | Dockerización | §12 | ⬜ |
+| 15 | Frontend Next.js | §11 | ✅ |
+| 16 | Dockerización | §12 | 🔜 |
 | 17 | Colección de Postman | §14 | ⬜ |
 | 18 | Diagrama de arquitectura y README | §13 | ⬜ |
 | 19 | Publicar en GitHub | Modalidad | ⬜ |
@@ -216,11 +216,27 @@ dotnet test tests/Mundialito.UnitTests          # segundos, sin Docker
 dotnet test tests/Mundialito.IntegrationTests   # requiere Docker
 ```
 
-## 🔜 15. Frontend Next.js
+## ✅ 15. Frontend Next.js
 
 Equipos, partidos, registro de resultados, tabla, goleadores, filtros y paginación, manejo de errores.
 
-## ⬜ 16. Docker
+| Decisión | Elegido |
+|---|---|
+| Dónde se llama a la API | Servidor de Next (Server Components + Server Actions); sin CORS |
+| Organización | Capa `lib/api` tipada que devuelve `ApiResult<T>` |
+| Alcance | Lo del §11 + crear equipo (muestra idempotencia y errores 409) |
+
+Next.js 16 (App Router, Cache Components) en `frontend/`: tabla (`/`), goleadores, equipos (+ crear), equipo con jugadores, partidos con filtros, detalle con registrar/corregir resultado. Capa `lib/api` (`server-only`), filtros/orden/página en la URL, `ErrorAlert` con code y traceId.
+
+**Verificado contra la API real** (build de producción): tabla y desempate del seed, goleadores, filtros, orden y paginación; errores 400 de la API mostrados con code y traceId; equipo inexistente → "No encontrado"; **doble envío del formulario con la misma Idempotency-Key → un solo equipo** (la API registra la repetición); nombre duplicado → 409 en el formulario; API caída → "No se pudo conectar" sin romper la página.
+
+```bash
+cd frontend
+npm install
+API_URL=http://localhost:5092 npm run dev    # http://localhost:3000
+```
+
+## 🔜 16. Docker
 
 Dockerfile de la API, Dockerfile del frontend y `docker-compose.yml` con API, base de datos y frontend.
 
