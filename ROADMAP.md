@@ -24,8 +24,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 14 | Pruebas unitarias | §15 | ✅ |
 | 15 | Frontend Next.js | §11 | ✅ |
 | 16 | Dockerización | §12 | ✅ |
-| 17 | Colección de Postman | §14 | 🔜 |
-| 18 | Diagrama de arquitectura y README | §13 | ⬜ |
+| 17 | Colección de Postman | §14 | ✅ |
+| 18 | Diagrama de arquitectura y README | §13 | 🔜 |
 | 19 | Publicar en GitHub | Modalidad | ⬜ |
 
 ---
@@ -254,11 +254,24 @@ docker-compose down -v   # borrar todo (el próximo up vuelve a sembrar)
 
 **Verificado desde cero:** migraciones y seed automáticos, API y frontend respondiendo, idempotencia, logs en Seq y trazas en Jaeger.
 
-## 🔜 17. Postman
+## ✅ 17. Postman
 
 Endpoints organizados; casos de idempotencia, filtros, paginación y errores; variables de entorno.
 
-## ⬜ 18. Diagrama y README
+| Decisión | Elegido |
+|---|---|
+| Organización | Carpetas por recurso (Equipos, Jugadores, Partidos, Torneo) + por caso del §14 (Idempotencia, Filtros y paginación, Errores) |
+| Tests | En cada request (status + `code`), ejecutables con *Run collection* o `newman` |
+| Entornos | Docker (`http://localhost:5000`) y Local (`http://localhost:5092`) |
+
+**Verificado con newman:** 50 requests, 165 aserciones, 0 fallos; repetible sobre la misma base.
+
+```bash
+npx newman run postman/Mundialito.postman_collection.json -e postman/Mundialito-Docker.postman_environment.json
+# En PowerShell (Windows), si bloquea los scripts: usar npx.cmd en lugar de npx.
+```
+
+## 🔜 18. Diagrama y README
 
 Diagrama con capas, CQRS, EF/Dapper, UnitOfWork, idempotencia, eventos, logs, traza, frontend y Docker.
 

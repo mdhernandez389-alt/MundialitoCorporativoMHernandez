@@ -472,3 +472,35 @@ docker-compose up --build
 | Ambiente de la API | Production (default de la imagen) | Logs en JSON compacto; sin OpenAPI. Lo de desarrollo (texto legible, Debug) queda para correr local. |
 
 **Verificado desde cero** (volúmenes nuevos): db `healthy` → api aplica 4 migraciones y siembra → frontend. La API responde en el 5000 con la tabla sembrada y el POST idempotente; el frontend muestra la tabla (hablando con la API por la red interna); Seq recibe los logs con su CorrelationId; Jaeger tiene la traza del POST con sus spans SQL.
+
+## 20. Colección de Postman (§14)
+
+```
+postman/
+  Mundialito.postman_collection.json         50 requests, 7 carpetas, 165 aserciones
+  Mundialito-Docker.postman_environment.json baseUrl = http://localhost:5000
+  Mundialito-Local.postman_environment.json  baseUrl = http://localhost:5092
+```
+
+| Carpeta | Qué cubre |
+|---|---|
+| 1. Equipos | CRUD completo: POST, GET, listado filtrado, PUT, PATCH, DELETE y DELETE repetido (idempotente) |
+| 2. Jugadores | Registro por equipo, listado y detalle |
+| 3. Partidos | Programar, registrar 2-1, repetir el mismo resultado, corregir a 1-1 |
+| 4. Torneo | Tabla (la corrección se refleja; empate total = posición compartida; orden oficial) y goleadores |
+| 5. Idempotencia | Misma key → mismo id, Location y `Idempotent-Replayed`; un solo registro; otro contenido → 422; sin key → 400 |
+| 6. Filtros y paginación | Páginas, `totalPages`, orden por nombre, filtros de equipos, partidos (estado, equipo, fechas), jugadores y goleadores |
+| 7. Errores | 400, 404 y 409 de negocio y de consulta, cada uno con su `code` y `traceId` |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Organización | **Carpetas por recurso + carpetas por caso del §14** | El flujo normal queda junto a su recurso; idempotencia, filtros/paginación y errores tienen carpeta propia: el evaluador encuentra cada requisito por nombre. |
+| Tests | **En cada request** (status, `code`, contenido) + uno a nivel colección (headers `X-Trace-Id` / `X-Correlation-Id`) | Con *Run collection* (o `newman`) la colección es una suite de pruebas de la API: verde/rojo sin comparar respuestas a ojo. |
+| Ids | Encadenados con variables de colección (`{{teamId}}`, `{{matchId}}`...) que guardan los tests | Los Ids los genera el dominio: no se pueden escribir fijos. La colección funciona contra cualquier base recién sembrada. |
+| Repetible | `{{runTag}}` único por corrida en los nombres | Se puede ejecutar muchas veces sobre la misma base sin chocar con "nombre duplicado". |
+| Idempotency-Key | `{{$guid}}` nuevo por request; la carpeta 5 reutiliza una a propósito | Muestra los tres casos del §6: repetición, key reusada y key ausente. |
+| Trazabilidad | `X-Correlation-Id: postman-{{runTag}}` en todos los requests | En Seq, `CorrelationId = 'postman-...'` muestra todos los logs de una corrida (§7). |
+| Variables de entorno | Dos entornos con `baseUrl` | Docker (5000) o la API local (5092), sin tocar la colección. |
+| Generación | Script (no versionado) que produce el JSON | 50 requests escritos de forma uniforme; el JSON versionado es lo que se importa en Postman. |
+
+**Verificado:** `newman` contra el docker-compose: 50 requests, 165 aserciones, 0 fallos; una segunda corrida sobre la misma base también pasa completa.

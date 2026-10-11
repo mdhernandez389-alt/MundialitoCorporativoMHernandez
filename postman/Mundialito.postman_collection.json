@@ -1,0 +1,1661 @@
+{
+  "info": {
+    "name": "Mundialito Corporativo API",
+    "description": "Colección de la prueba técnica (§14). Ejecutar completa y en orden (Run collection): cada carpeta usa los Ids que guardan las anteriores. Funciona contra una base recién sembrada y se puede repetir: cada corrida usa nombres únicos ({{runTag}}).\n\nEntornos: 'Mundialito - Docker' (http://localhost:5000) y 'Mundialito - Local' (http://localhost:5092).\n\nCada request manda X-Correlation-Id = postman-{{runTag}}: en Seq se ven todos los logs de una corrida con CorrelationId = 'postman-...'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Etiqueta por defecto si se envía un request suelto (la carpeta 1 genera una nueva en cada corrida).",
+          "if (!pm.collectionVariables.get(\"runTag\")) pm.collectionVariables.set(\"runTag\", Date.now().toString(36));",
+          "// Trazabilidad (§7): todos los requests de una corrida comparten CorrelationId.",
+          "pm.request.headers.upsert({ key: \"X-Correlation-Id\", value: \"postman-\" + pm.collectionVariables.get(\"runTag\") });"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Toda respuesta trae los headers de trazabilidad (§7).",
+          "pm.test(\"headers X-Trace-Id y X-Correlation-Id\", () => { pm.expect(pm.response.headers.get(\"X-Trace-Id\")).to.match(/^[0-9a-f]{32}$/); pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.include(\"postman-\"); });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "runTag",
+      "value": ""
+    },
+    {
+      "key": "idemKey",
+      "value": ""
+    },
+    {
+      "key": "teamId",
+      "value": ""
+    },
+    {
+      "key": "rivalId",
+      "value": ""
+    },
+    {
+      "key": "tempTeamId",
+      "value": ""
+    },
+    {
+      "key": "playerId",
+      "value": ""
+    },
+    {
+      "key": "rivalPlayerId",
+      "value": ""
+    },
+    {
+      "key": "matchId",
+      "value": ""
+    },
+    {
+      "key": "replayKey",
+      "value": ""
+    },
+    {
+      "key": "replayTeamId",
+      "value": ""
+    },
+    {
+      "key": "replayLocation",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Equipos",
+      "description": "CRUD completo de equipos (§8). PUT y PATCH responden 204; DELETE es idempotente (§6).",
+      "item": [
+        {
+          "name": "Crear equipo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "POST idempotente: requiere Idempotency-Key. Guarda {{teamId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Sistemas\",\n  \"department\": \"Tecnología\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Etiqueta única por corrida: los nombres no chocan con corridas anteriores.",
+                  "pm.collectionVariables.set(\"runTag\", Date.now().toString(36));",
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"teamId\", pm.response.json().id);",
+                  "pm.test(\"Location apunta al equipo\", () => pm.expect(pm.response.headers.get(\"Location\")).to.include(pm.collectionVariables.get(\"teamId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener equipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"es el equipo creado\", () => pm.expect(pm.response.json().name).to.include(\"Sistemas\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar equipos (filtro por nombre)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?name={{runTag}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "pm.test(\"encuentra el equipo de esta corrida\", () => pm.expect(pm.response.json().totalRecords).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reemplazar equipo (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}",
+            "description": "Reemplazo completo. Repetirlo con los mismos datos no cambia nada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Sistemas FC\",\n  \"department\": \"TI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Modificar solo el departamento (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}",
+            "description": "Campo ausente = no cambiar (JSON Merge Patch).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"Tecnología de la Información\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verificar PUT + PATCH",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"nombre del PUT\", () => pm.expect(pm.response.json().name).to.include(\"Sistemas FC\"));",
+                  "pm.test(\"departamento del PATCH\", () => pm.expect(pm.response.json().department).to.eql(\"Tecnología de la Información\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear equipo rival",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Finanzas\",\n  \"department\": \"Finanzas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"rivalId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear equipo temporal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Temporal\",\n  \"department\": \"Pruebas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"tempTeamId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar equipo (sin partidos)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{tempTeamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar de nuevo (DELETE idempotente)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{tempTeamId}}",
+            "description": "Ya no existe: el estado pedido se cumple, responde 204 igual."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Equipo eliminado ya no existe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{tempTeamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code = Team.NotFound\", () => pm.expect(pm.response.json().code).to.eql(\"Team.NotFound\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Jugadores",
+      "description": "Registro de jugadores por equipo (§8).",
+      "item": [
+        {
+          "name": "Registrar jugador",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Carlos Méndez\",\n  \"shirtNumber\": 9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"playerId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registrar jugador del rival",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{rivalId}}/players",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Fernando Ruiz\",\n  \"shirtNumber\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"rivalPlayerId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Jugadores del equipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "pm.test(\"incluye al jugador\", () => pm.expect(pm.response.json().data.map(p => p.id)).to.include(pm.collectionVariables.get(\"playerId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener jugador",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players/{{playerId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"dorsal 9\", () => pm.expect(pm.response.json().shirtNumber).to.eql(9));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Partidos",
+      "description": "Creación y registro de resultado (§8). El resultado es un PUT idempotente: repetirlo no cambia la tabla; cambiarlo lo corrige.",
+      "item": [
+        {
+          "name": "Programar partido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"homeTeamId\": \"{{teamId}}\",\n  \"awayTeamId\": \"{{rivalId}}\",\n  \"scheduledAt\": \"2030-06-15T18:00:00-06:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"matchId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registrar resultado 2-1",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}/result",
+            "description": "Un Id por gol: el marcador se deriva de los goleadores.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scorerPlayerIds\": [\n    \"{{playerId}}\",\n    \"{{playerId}}\",\n    \"{{rivalPlayerId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle del partido",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const m = pm.response.json();",
+                  "pm.test(\"jugado 2-1\", () => { pm.expect(m.status).to.eql(\"Played\"); pm.expect([m.homeGoals, m.awayGoals]).to.eql([2, 1]); });",
+                  "pm.test(\"con sus 3 goles\", () => pm.expect(m.goals.length).to.eql(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repetir el mismo resultado (PUT idempotente)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}/result",
+            "description": "Mismos goles en otro orden: no cambia nada ni emite evento.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scorerPlayerIds\": [\n    \"{{rivalPlayerId}}\",\n    \"{{playerId}}\",\n    \"{{playerId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Corregir a 1-1",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}/result",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scorerPlayerIds\": [\n    \"{{playerId}}\",\n    \"{{rivalPlayerId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle tras la corrección",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"ahora 1-1\", () => pm.expect([pm.response.json().homeGoals, pm.response.json().awayGoals]).to.eql([1, 1]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Torneo",
+      "description": "Tabla de posiciones (puntos → diferencia de gol → goles a favor) y goleadores (§8).",
+      "item": [
+        {
+          "name": "Tabla de posiciones (equipos de esta corrida)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/standings?teamName={{runTag}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "const rows = pm.response.json().data;",
+                  "pm.test(\"la corrección se refleja: un empate para cada uno\", () => rows.forEach(r => { pm.expect(r.played).to.eql(1); pm.expect(r.drawn).to.eql(1); pm.expect(r.points).to.eql(1); }));",
+                  "pm.test(\"empate total → posición compartida\", () => pm.expect(rows[0].position).to.eql(rows[1].position));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tabla de posiciones (orden oficial)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/standings?pageSize=100",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data;",
+                  "pm.test(\"ordenada por puntos, diferencia y goles a favor\", () => { for (let i = 1; i < rows.length; i++) { const a = rows[i-1], b = rows[i]; const ka = [a.points, a.goalDifference, a.goalsFor], kb = [b.points, b.goalDifference, b.goalsFor]; const cmp = ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2]; pm.expect(cmp).to.be.at.least(0); } });",
+                  "pm.test(\"posiciones no decrecientes\", () => { for (let i = 1; i < rows.length; i++) pm.expect(rows[i].position).to.be.at.least(rows[i-1].position); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Goleadores del equipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/scorers?teamId={{teamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "pm.test(\"Carlos Méndez con 1 gol tras la corrección\", () => pm.expect(pm.response.json().data[0].goals).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Idempotencia",
+      "description": "Idempotency-Key en POST (§6): persistida, sin duplicados y con la misma respuesta ante una repetición.",
+      "item": [
+        {
+          "name": "Crear equipo con una key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Idempotente\",\n  \"department\": \"Auditoría\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"replayKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"replayTeamId\", pm.response.json().id);",
+                  "pm.collectionVariables.set(\"replayLocation\", pm.response.headers.get(\"Location\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mismo request, misma key → misma respuesta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Idempotente\",\n  \"department\": \"Auditoría\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"mismo id (no se creó otro equipo)\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"replayTeamId\")));",
+                  "pm.test(\"mismo Location\", () => pm.expect(pm.response.headers.get(\"Location\")).to.eql(pm.collectionVariables.get(\"replayLocation\")));",
+                  "pm.test(\"Idempotent-Replayed: true\", () => pm.expect(pm.response.headers.get(\"Idempotent-Replayed\")).to.eql(\"true\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verificar que existe un solo equipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?name={{runTag}} Idempotente",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"un solo registro\", () => pm.expect(pm.response.json().totalRecords).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Misma key, otro contenido → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{replayKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Otro nombre\",\n  \"department\": \"Auditoría\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code = Idempotency.KeyReused\", () => pm.expect(pm.response.json().code).to.eql(\"Idempotency.KeyReused\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST sin Idempotency-Key → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Sin key\",\n  \"department\": \"Auditoría\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Idempotency.KeyRequired\", () => pm.expect(pm.response.json().code).to.eql(\"Idempotency.KeyRequired\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Filtros y paginación",
+      "description": "Todos los GET aceptan pageNumber, pageSize, sortBy, sortDirection y filtros por entidad (§10).",
+      "item": [
+        {
+          "name": "Equipos: página 1 de 2 en 2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?pageSize=2&pageNumber=1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"como mucho 2 por página\", () => pm.expect(p.data.length).to.be.at.most(2));",
+                  "pm.test(\"totalPages = ceil(totalRecords / pageSize)\", () => pm.expect(p.totalPages).to.eql(Math.ceil(p.totalRecords / 2)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Equipos: página 2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?pageSize=2&pageNumber=2",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"pageNumber = 2\", () => pm.expect(pm.response.json().pageNumber).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Equipos: orden por nombre descendente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?sortBy=name&sortDirection=desc&pageSize=100",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const names = pm.response.json().data.map(t => t.name.toLowerCase());",
+                  "pm.test(\"ordenados Z → A\", () => pm.expect(names).to.eql([...names].sort().reverse()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Equipos: filtro por departamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?department=auditor",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"todos contienen el texto\", () => pm.response.json().data.forEach(t => pm.expect(t.department.toLowerCase()).to.include(\"auditor\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partidos: solo jugados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches?status=Played",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"respuesta paginada del §10\", () => pm.expect(pm.response.json()).to.have.all.keys(\"data\", \"pageNumber\", \"pageSize\", \"totalRecords\", \"totalPages\"));",
+                  "pm.test(\"todos Played\", () => pm.response.json().data.forEach(m => pm.expect(m.status).to.eql(\"Played\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partidos: solo programados",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches?status=Scheduled",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"todos Scheduled\", () => pm.response.json().data.forEach(m => pm.expect(m.status).to.eql(\"Scheduled\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partidos: por equipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches?teamId={{teamId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const id = pm.collectionVariables.get(\"teamId\");",
+                  "pm.test(\"el equipo juega en todos\", () => pm.response.json().data.forEach(m => pm.expect([m.homeTeamId, m.awayTeamId]).to.include(id)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partidos: por rango de fechas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches?from=2030-06-01T00:00:00-06:00&to=2030-06-30T23:59:59-06:00",
+            "description": "Las fechas llevan zona horaria (el '+' se escribe %2B)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"todos dentro del rango\", () => pm.response.json().data.forEach(m => { const d = new Date(m.scheduledAtUtc); pm.expect(d >= new Date(\"2030-06-01T06:00:00Z\") && d <= new Date(\"2030-07-01T05:59:59Z\")).to.be.true; }));",
+                  "pm.test(\"incluye el partido de esta corrida\", () => pm.expect(pm.response.json().data.map(m => m.id)).to.include(pm.collectionVariables.get(\"matchId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Jugadores: filtro por nombre",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players?name=carlos",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"encuentra a Carlos\", () => pm.expect(pm.response.json().totalRecords).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Goleadores: orden por goles descendente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/scorers?sortBy=goals&sortDirection=desc",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const g = pm.response.json().data.map(s => s.goals);",
+                  "pm.test(\"de más a menos goles\", () => pm.expect(g).to.eql([...g].sort((a, b) => b - a)));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Errores",
+      "description": "Todo error es ProblemDetails con code y traceId (§5): 400 validación, 404 inexistente, 409 conflicto.",
+      "item": [
+        {
+          "name": "Equipo sin nombre → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"TI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Team.NameRequired\", () => pm.expect(pm.response.json().code).to.eql(\"Team.NameRequired\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Nombre duplicado → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams",
+            "description": "Mismo nombre que el equipo de la carpeta 1 (sin distinguir mayúsculas).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{runTag}} Sistemas FC\",\n  \"department\": \"Otro\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code = Team.NameDuplicated\", () => pm.expect(pm.response.json().code).to.eql(\"Team.NameDuplicated\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dorsal ocupado → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Otro\",\n  \"shirtNumber\": 9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code = Player.ShirtNumberTaken\", () => pm.expect(pm.response.json().code).to.eql(\"Player.ShirtNumberTaken\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dorsal fuera de rango → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}/players",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Otro\",\n  \"shirtNumber\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Player.InvalidShirtNumber\", () => pm.expect(pm.response.json().code).to.eql(\"Player.InvalidShirtNumber\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partido contra sí mismo → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"homeTeamId\": \"{{teamId}}\",\n  \"awayTeamId\": \"{{teamId}}\",\n  \"scheduledAt\": \"2030-06-20T18:00:00-06:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Match.SameTeams\", () => pm.expect(pm.response.json().code).to.eql(\"Match.SameTeams\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partido inexistente → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches/00000000-0000-0000-0000-000000000001",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code = Match.NotFound\", () => pm.expect(pm.response.json().code).to.eql(\"Match.NotFound\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Goleador inexistente → 404",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/matches/{{matchId}}/result",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scorerPlayerIds\": [\n    \"00000000-0000-0000-0000-000000000001\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code = Player.NotFound\", () => pm.expect(pm.response.json().code).to.eql(\"Player.NotFound\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar equipo con partidos → 409",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams/{{teamId}}",
+            "description": "Sus rivales tienen puntos contra él: borrarlo dejaría la tabla inconsistente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code = Team.HasMatches\", () => pm.expect(pm.response.json().code).to.eql(\"Team.HasMatches\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "sortBy no permitido → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?sortBy=edad",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Query.InvalidSortBy\", () => pm.expect(pm.response.json().code).to.eql(\"Query.InvalidSortBy\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "pageSize fuera de rango → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/teams?pageSize=500",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Query.InvalidPageSize\", () => pm.expect(pm.response.json().code).to.eql(\"Query.InvalidPageSize\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "status inválido → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/matches?status=Suspendido",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code = Match.InvalidStatusFilter\", () => pm.expect(pm.response.json().code).to.eql(\"Match.InvalidStatusFilter\"));",
+                  "pm.test(\"ProblemDetails con traceId\", () => pm.expect(pm.response.json().traceId).to.match(/^[0-9a-f]{32}$/));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
