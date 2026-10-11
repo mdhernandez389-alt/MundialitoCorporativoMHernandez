@@ -504,3 +504,12 @@ postman/
 | Generación | Script (no versionado) que produce el JSON | 50 requests escritos de forma uniforme; el JSON versionado es lo que se importa en Postman. |
 
 **Verificado:** `newman` contra el docker-compose: 50 requests, 165 aserciones, 0 fallos; una segunda corrida sobre la misma base también pasa completa.
+
+## 21. Diagrama de arquitectura y README (§13)
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Formato | **Mermaid** dentro de Markdown | GitHub lo dibuja solo; queda versionado como texto (un cambio de arquitectura se revisa con `git diff`) y no hay imágenes que se desactualicen. Los 6 diagramas se validaron con `mermaid-cli` antes de publicarlos. |
+| Vistas | **Cinco diagramas enfocados** en [ARQUITECTURA.md](ARQUITECTURA.md) + uno general en el README | Despliegue, capas, escritura, lectura y trazabilidad: cada uno responde una pregunta y entre todos cubren los 11 elementos del §13. Un único diagrama con todo sería ilegible. |
+| README | Puerta de entrada: levantar con un comando, cómo probar, arquitectura y una tabla **requisito → dónde se cumple** | El evaluador encuentra cada punto de la prueba sin recorrer el código. |
+| Desarrollo local | El compose expone SQL Server (14333) y OTLP (4317) | `docker-compose up -d db seq jaeger` + `dotnet run`: sin contenedores de desarrollo aparte. Los puertos coinciden con `appsettings.Development.json`. |

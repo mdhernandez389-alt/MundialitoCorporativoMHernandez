@@ -25,8 +25,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 15 | Frontend Next.js | §11 | ✅ |
 | 16 | Dockerización | §12 | ✅ |
 | 17 | Colección de Postman | §14 | ✅ |
-| 18 | Diagrama de arquitectura y README | §13 | 🔜 |
-| 19 | Publicar en GitHub | Modalidad | ⬜ |
+| 18 | Diagrama de arquitectura y README | §13 | ✅ |
+| 19 | Publicar en GitHub | Modalidad | 🔜 |
 
 ---
 
@@ -271,11 +271,18 @@ npx newman run postman/Mundialito.postman_collection.json -e postman/Mundialito-
 # En PowerShell (Windows), si bloquea los scripts: usar npx.cmd en lugar de npx.
 ```
 
-## 🔜 18. Diagrama y README
+## ✅ 18. Diagrama y README
 
 Diagrama con capas, CQRS, EF/Dapper, UnitOfWork, idempotencia, eventos, logs, traza, frontend y Docker.
 
-## ⬜ 19. GitHub
+| Decisión | Elegido |
+|---|---|
+| Formato | Mermaid en Markdown (GitHub lo dibuja; versionado como texto) |
+| Vistas | Cinco diagramas enfocados en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) + uno general en el README |
+
+[README.md](README.md): levantar con un comando, cómo probar, arquitectura y tabla requisito → dónde se cumple.
+
+## 🔜 19. GitHub
 
 Repositorio público con el código, la documentación y la colección.
 

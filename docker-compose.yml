@@ -7,6 +7,8 @@
 #   Seq       http://localhost:5341      (logs)
 #   Jaeger    http://localhost:16686     (trazas)
 #
+# Desarrollo local sin Docker para la API: `docker-compose up -d db seq jaeger` y luego `dotnet run`.
+#
 # La API espera a SQL Server, aplica las migraciones y siembra los datos de ejemplo sola (§9).
 # La contraseña de SQL Server tiene un valor de demo; para usar otra, copiar .env.example a .env.
 
@@ -20,6 +22,9 @@ services:
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Mundialito_Dev_2026!}
     volumes:
       - mssql-data:/var/opt/mssql
+    # Expuesto para desarrollo local: `dotnet run` usa localhost,14333 (appsettings.Development.json).
+    ports:
+      - "14333:1433"
     # "Sano" = ya acepta consultas. La API arranca recién entonces (y además reintenta por su cuenta).
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
@@ -71,6 +76,8 @@ services:
     image: jaegertracing/jaeger:latest
     ports:
       - "16686:16686"
+      # OTLP expuesto para desarrollo local (la API dockerizada lo usa por la red interna).
+      - "4317:4317"
 
 volumes:
   mssql-data:
