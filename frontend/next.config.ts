@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Servidor mínimo (server.js) con solo los archivos necesarios: la imagen de Docker queda chica.
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

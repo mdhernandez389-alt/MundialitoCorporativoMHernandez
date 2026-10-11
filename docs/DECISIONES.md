@@ -437,3 +437,38 @@ frontend/src/
 | Estilos | Tailwind mínimo, fuente del sistema | Lo visual no se evalúa. Sin fuentes de Google: el build de Docker no depende de descargarlas. |
 | 404 con streaming | La página "No encontrado" se muestra, pero con status HTTP 200 | Con Partial Prerender el esqueleto se envía antes de consultar la API; una vez enviado el primer byte, el status no se puede cambiar. Next incluye el componente not-found en el payload y lo muestra al hidratar. El 404 "real" lo da la API (que es lo que se evalúa); el frontend es la presentación. |
 | `toProblem` | Lee el ProblemDetails con respaldo para cada campo | Un error de la API nunca rompe la página: si el cuerpo no es JSON (un proxy, un 502), igual se muestra un error con el status real. |
+
+## 19. Docker (§12)
+
+```
+docker-compose.yml         db, api, frontend, seq, jaeger
+.env.example               contraseña propia de SQL Server (opcional)
+backend/Dockerfile         sdk:10.0 → aspnet:10.0 (usuario sin privilegios, puerto 8080)
+frontend/Dockerfile        node:24-alpine, salida standalone (server.js), usuario node
+```
+
+```bash
+docker-compose up --build
+```
+
+| Servicio | URL | Para qué |
+|---|---|---|
+| frontend | http://localhost:3000 | La aplicación |
+| api | http://localhost:5000 | Postman (paso 17) |
+| seq | http://localhost:5341 | Logs |
+| jaeger | http://localhost:16686 | Trazas |
+| db | (solo red interna) | SQL Server |
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Servicios | **Los 5 en el compose** | Un solo `docker-compose up` muestra también la observabilidad (10% de la nota) y el opcional de Jaeger, sin pasos extra. |
+| Contraseña de SQL Server | **`${MSSQL_SA_PASSWORD:-<demo>}`** + `.env.example` | Funciona tal cual con `docker-compose up` (lo que pide el §12) y se puede cambiar con un `.env` ignorado por git. El valor de demo es solo para el contenedor local. |
+| Orden de arranque | `db` con healthcheck (`sqlcmd SELECT 1`) → `api` → `frontend` | La API arranca con SQL Server ya listo; además reintenta por su cuenta (paso 13), así que no depende solo del healthcheck. |
+| Configuración | Variables de entorno (`ConnectionStrings__Mundialito`, `Serilog__WriteTo__Seq__...`, `OpenTelemetry__OtlpEndpoint`, `API_URL`) | El código no cambia entre local y Docker: solo la configuración. Los servicios se encuentran por nombre en la red de Docker (`db`, `seq`, `jaeger`, `api`). |
+| Imágenes | Multi-stage: compilar con la imagen grande, ejecutar con la chica | La imagen final no lleva SDK, compilador ni código fuente. Restore/`npm ci` en capas separadas para aprovechar la caché. |
+| Seguridad de contenedores | API y frontend corren con usuario sin privilegios (`$APP_UID`, `node`) | Buenas prácticas de contenedores: nada corre como root. |
+| Frontend | `output: "standalone"` | Imagen mínima: solo `server.js` y los archivos que usa, sin el `node_modules` completo. Se eliminó `public/` (estaba vacía y git no versiona carpetas vacías: el `COPY` fallaría al clonar). |
+| Datos | Volumen para SQL Server y para Seq | Los datos sobreviven a `docker-compose down` y `up`. Para empezar de cero: `docker-compose down -v` (vuelve a sembrar). Jaeger guarda en memoria (all-in-one de desarrollo). |
+| Ambiente de la API | Production (default de la imagen) | Logs en JSON compacto; sin OpenAPI. Lo de desarrollo (texto legible, Debug) queda para correr local. |
+
+**Verificado desde cero** (volúmenes nuevos): db `healthy` → api aplica 4 migraciones y siembra → frontend. La API responde en el 5000 con la tabla sembrada y el POST idempotente; el frontend muestra la tabla (hablando con la API por la red interna); Seq recibe los logs con su CorrelationId; Jaeger tiene la traza del POST con sus spans SQL.

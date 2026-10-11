@@ -1,0 +1,77 @@
+# Mundialito Corporativo: todo con un comando (§12).
+#
+#   docker-compose up --build
+#
+#   Frontend  http://localhost:3000
+#   API       http://localhost:5000      (Postman)
+#   Seq       http://localhost:5341      (logs)
+#   Jaeger    http://localhost:16686     (trazas)
+#
+# La API espera a SQL Server, aplica las migraciones y siembra los datos de ejemplo sola (§9).
+# La contraseña de SQL Server tiene un valor de demo; para usar otra, copiar .env.example a .env.
+
+name: mundialito-mh
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Mundialito_Dev_2026!}
+    volumes:
+      - mssql-data:/var/opt/mssql
+    # "Sano" = ya acepta consultas. La API arranca recién entonces (y además reintenta por su cuenta).
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+      seq:
+        condition: service_started
+      jaeger:
+        condition: service_started
+    environment:
+      # Los servicios se encuentran por nombre dentro de la red de Docker (db, seq, jaeger).
+      ConnectionStrings__Mundialito: "Server=db,1433;Database=Mundialito;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Mundialito_Dev_2026!};TrustServerCertificate=True"
+      Serilog__WriteTo__Seq__Name: Seq
+      Serilog__WriteTo__Seq__Args__serverUrl: http://seq
+      OpenTelemetry__OtlpEndpoint: http://jaeger:4317
+    ports:
+      - "5000:8080"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - api
+    environment:
+      # Solo lo usa el servidor de Next: el navegador nunca habla directo con la API.
+      API_URL: http://api:8080
+    ports:
+      - "3000:3000"
+
+  seq:
+    image: datalust/seq:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
+    volumes:
+      - seq-data:/data
+    ports:
+      - "5341:80"
+
+  jaeger:
+    # Versión all-in-one: recibe OTLP (4317, solo red interna) y guarda las trazas en memoria.
+    image: jaegertracing/jaeger:latest
+    ports:
+      - "16686:16686"
+
+volumes:
+  mssql-data:
+  seq-data:

@@ -1,0 +1,8 @@
+# Solo src/ entra a la imagen: ni binarios locales, ni tests, ni archivos del IDE.
+**/bin/
+**/obj/
+tests/
+**/*.user
+.vs/
+Dockerfile
+.dockerignore

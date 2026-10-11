@@ -23,8 +23,8 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 13 | Seed de datos | §9 | ✅ |
 | 14 | Pruebas unitarias | §15 | ✅ |
 | 15 | Frontend Next.js | §11 | ✅ |
-| 16 | Dockerización | §12 | 🔜 |
-| 17 | Colección de Postman | §14 | ⬜ |
+| 16 | Dockerización | §12 | ✅ |
+| 17 | Colección de Postman | §14 | 🔜 |
 | 18 | Diagrama de arquitectura y README | §13 | ⬜ |
 | 19 | Publicar en GitHub | Modalidad | ⬜ |
 
@@ -236,11 +236,25 @@ npm install
 API_URL=http://localhost:5092 npm run dev    # http://localhost:3000
 ```
 
-## 🔜 16. Docker
+## ✅ 16. Docker
 
-Dockerfile de la API, Dockerfile del frontend y `docker-compose.yml` con API, base de datos y frontend.
+Dockerfile de la API, Dockerfile del frontend y `docker-compose.yml` con API, base de datos y frontend (más Seq y Jaeger).
 
-## ⬜ 17. Postman
+| Decisión | Elegido |
+|---|---|
+| Servicios | db, api, frontend, seq, jaeger: todo con un comando |
+| Contraseña de SQL Server | Valor de demo por defecto + `.env` opcional (`.env.example`) |
+| Arranque | Healthcheck de SQL Server + reintentos de la API |
+
+```bash
+docker-compose up --build
+# Frontend http://localhost:3000 · API http://localhost:5000 · Seq http://localhost:5341 · Jaeger http://localhost:16686
+docker-compose down -v   # borrar todo (el próximo up vuelve a sembrar)
+```
+
+**Verificado desde cero:** migraciones y seed automáticos, API y frontend respondiendo, idempotencia, logs en Seq y trazas en Jaeger.
+
+## 🔜 17. Postman
 
 Endpoints organizados; casos de idempotencia, filtros, paginación y errores; variables de entorno.
 

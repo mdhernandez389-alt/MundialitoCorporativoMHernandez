@@ -1,0 +1,7 @@
+# Las dependencias se instalan dentro de la imagen (npm ci): las locales (Windows) no sirven en Linux.
+node_modules
+.next
+.env*
+npm-debug.log*
+Dockerfile
+.dockerignore
