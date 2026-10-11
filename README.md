@@ -22,6 +22,9 @@ docker-compose up --build
 | Seq (logs) | http://localhost:5341 |
 | Jaeger (trazas) | http://localhost:16686 |
 
+> **Windows:** si al clonar aparece *"Filename too long"*, clonar en una ruta más corta o activar rutas largas:
+> `git clone -c core.longpaths=true <url>`.
+
 `docker-compose down -v` borra todo; el próximo `up` vuelve a sembrar. La contraseña de SQL Server tiene un
 valor de demo; para usar otra, copiar [.env.example](.env.example) a `.env`.
 

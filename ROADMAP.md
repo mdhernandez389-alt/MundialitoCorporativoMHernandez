@@ -26,7 +26,7 @@ Construcción paso a paso de la prueba técnica. Cada paso es pequeño, se entie
 | 16 | Dockerización | §12 | ✅ |
 | 17 | Colección de Postman | §14 | ✅ |
 | 18 | Diagrama de arquitectura y README | §13 | ✅ |
-| 19 | Publicar en GitHub | Modalidad | 🔜 |
+| 19 | Publicar en GitHub | Modalidad | ✅ |
 
 ---
 
@@ -282,9 +282,17 @@ Diagrama con capas, CQRS, EF/Dapper, UnitOfWork, idempotencia, eventos, logs, tr
 
 [README.md](README.md): levantar con un comando, cómo probar, arquitectura y tabla requisito → dónde se cumple.
 
-## 🔜 19. GitHub
+## ✅ 19. GitHub
 
-Repositorio público con el código, la documentación y la colección.
+Repositorio público con el código, la documentación y la colección: https://github.com/mdhernandez389-alt/MundialitoCorporativoMHernandez
+
+| Decisión | Elegido |
+|---|---|
+| Autor de los commits | Correo `noreply` de GitHub (historial reescrito antes de publicar) |
+| `CLAUDE.md` | Se mantiene: la prueba permite IA y muestra el método de trabajo |
+| Datos personales | El correo original de la prueba nunca se versionó (purgado del historial en el paso 10) |
+
+**Verificado desde un clon limpio de GitHub:** `docker-compose up --build` → migraciones y seed automáticos; Postman 50 requests / 165 aserciones sin fallos; frontend, Seq y Jaeger responden; 42 tests unitarios + 14 de integración en verde.
 
 ---
 
