@@ -102,7 +102,7 @@ internal sealed class GetMatchByIdHandler(DbConnectionFactory connections)
             {MatchSql.From}
             WHERE m.Id = @MatchId;
 
-            SELECT g.PlayerId, p.FullName AS PlayerName, g.TeamId
+            SELECT g.PlayerId, p.FullName AS PlayerName, g.TeamId, g.IsOwnGoal
             FROM Goals g
             JOIN Players p ON p.Id = g.PlayerId
             WHERE g.MatchId = @MatchId

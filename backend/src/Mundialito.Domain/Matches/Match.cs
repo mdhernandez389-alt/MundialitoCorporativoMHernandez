@@ -46,7 +46,7 @@ public sealed class Match : Entity
 
     /// <summary>
     /// Registra o corrige el resultado (semántica de PUT: reemplaza el resultado completo).
-    /// Lista vacía = 0 a 0.
+    /// Lista vacía = 0 a 0. Un autogol suma al rival del jugador.
     /// </summary>
     /// <remarks>
     /// Idempotente: si llega exactamente el mismo resultado no cambia nada ni se emite evento,
@@ -67,11 +67,12 @@ public sealed class Match : Entity
         var previousScore = Score;
 
         _goals.Clear();
-        _goals.AddRange(scorers.Select(scorer => Goal.Create(Id, scorer)));
+        _goals.AddRange(scorers.Select(scorer => Goal.Create(Id, scorer, CreditedTeamId(scorer))));
 
+        // Se cuenta sobre los goles ya creados (equipo beneficiado), no sobre el equipo de cada jugador.
         Score = new Score(
-            HomeGoals: scorers.Count(s => s.TeamId == HomeTeamId),
-            AwayGoals: scorers.Count(s => s.TeamId == AwayTeamId));
+            HomeGoals: _goals.Count(g => g.TeamId == HomeTeamId),
+            AwayGoals: _goals.Count(g => g.TeamId == AwayTeamId));
         Status = MatchStatus.Played;
 
         Raise(new MatchResultRegisteredDomainEvent(Id, HomeTeamId, AwayTeamId, Score, previousScore));
@@ -79,8 +80,20 @@ public sealed class Match : Entity
         return Result.Success();
     }
 
-    // Compara como multiconjunto: no importa el orden, sí cuántos goles hizo cada jugador.
+    /// <summary>Un gol suma al equipo del jugador; un autogol, al rival.</summary>
+    private Guid CreditedTeamId(GoalScorer scorer)
+    {
+        if (!scorer.IsOwnGoal)
+        {
+            return scorer.TeamId;
+        }
+
+        return scorer.TeamId == HomeTeamId ? AwayTeamId : HomeTeamId;
+    }
+
+    // Compara como multiconjunto: no importa el orden, sí cuántos goles y autogoles hizo cada jugador.
+    // TeamId no entra en la clave: en Goal es el equipo beneficiado y en GoalScorer el del jugador.
     private bool HasSameScorers(IReadOnlyCollection<GoalScorer> scorers) =>
-        _goals.Select(g => g.PlayerId).Order()
-            .SequenceEqual(scorers.Select(s => s.PlayerId).Order());
+        _goals.Select(g => (g.PlayerId, g.IsOwnGoal)).Order()
+            .SequenceEqual(scorers.Select(s => (s.PlayerId, s.IsOwnGoal)).Order());
 }

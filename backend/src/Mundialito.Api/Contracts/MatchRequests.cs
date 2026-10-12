@@ -15,4 +15,10 @@ public sealed record ScheduleMatchRequest(
 /// Un Id por gol (un doblete = dos veces el mismo Id). Obligatorio: <c>[]</c> registra un 0 a 0 a propósito;
 /// olvidarse del campo no debe registrarlo por accidente.
 /// </param>
-public sealed record RegisterMatchResultRequest([Required] IReadOnlyCollection<Guid>? ScorerPlayerIds);
+/// <param name="OwnGoalPlayerIds">
+/// Opcional: un Id por autogol (suma al rival). Ausente = sin autogoles, así los clientes que no lo
+/// conocen siguen funcionando igual.
+/// </param>
+public sealed record RegisterMatchResultRequest(
+    [Required] IReadOnlyCollection<Guid>? ScorerPlayerIds,
+    IReadOnlyCollection<Guid>? OwnGoalPlayerIds = null);

@@ -9,4 +9,8 @@ namespace Mundialito.Application.Matches.Commands.RegisterMatchResult;
 /// Un Id por gol: un jugador con dos goles aparece dos veces. Lista vacía = 0 a 0.
 /// El marcador no se recibe: se deriva de esta lista.
 /// </param>
-public sealed record RegisterMatchResultCommand(Guid MatchId, IReadOnlyCollection<Guid> ScorerPlayerIds) : ICommand;
+/// <param name="OwnGoalPlayerIds">Un Id por autogol, con la misma regla. Suma al rival del jugador.</param>
+public sealed record RegisterMatchResultCommand(
+    Guid MatchId,
+    IReadOnlyCollection<Guid> ScorerPlayerIds,
+    IReadOnlyCollection<Guid> OwnGoalPlayerIds) : ICommand;

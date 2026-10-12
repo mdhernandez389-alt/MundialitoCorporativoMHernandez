@@ -25,11 +25,14 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
     getTeamPlayers(m.awayTeamId, { pageSize: 100 }),
   ]);
 
-  // Goles actuales por jugador, para precargar el formulario cuando se corrige un resultado.
+  // Goles y autogoles actuales por jugador, para precargar el formulario cuando se corrige un resultado.
   const goalsByPlayer: Record<string, number> = {};
+  const ownGoalsByPlayer: Record<string, number> = {};
   for (const goal of m.goals) {
-    goalsByPlayer[goal.playerId] = (goalsByPlayer[goal.playerId] ?? 0) + 1;
+    const counts = goal.isOwnGoal ? ownGoalsByPlayer : goalsByPlayer;
+    counts[goal.playerId] = (counts[goal.playerId] ?? 0) + 1;
   }
+  const teamName = (teamId: string) => (teamId === m.homeTeamId ? m.homeTeamName : m.awayTeamName);
 
   return (
     <section className="space-y-6">
@@ -51,7 +54,9 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           <ul className="list-inside list-disc text-sm">
             {m.goals.map((goal, index) => (
               <li key={`${goal.playerId}-${index}`}>
-                {goal.playerName} ({goal.teamId === m.homeTeamId ? m.homeTeamName : m.awayTeamName})
+                {goal.isOwnGoal
+                  ? `${goal.playerName} (autogol, suma a ${teamName(goal.teamId)})`
+                  : `${goal.playerName} (${teamName(goal.teamId)})`}
               </li>
             ))}
           </ul>
@@ -70,6 +75,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             home={{ teamName: m.homeTeamName, players: homePlayers.data.data }}
             away={{ teamName: m.awayTeamName, players: awayPlayers.data.data }}
             goalsByPlayer={goalsByPlayer}
+            ownGoalsByPlayer={ownGoalsByPlayer}
           />
         )}
       </div>

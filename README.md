@@ -32,10 +32,10 @@ valor de demo; para usar otra, copiar [.env.example](.env.example) a `.env`.
 
 | Qué | Cómo |
 |---|---|
-| **Postman** | Importar [postman/](postman/) (colección + entorno *Mundialito - Docker*) y *Run collection*: 50 requests con 165 tests (idempotencia, filtros, paginación, errores). Desde la terminal: `npx newman run postman/Mundialito.postman_collection.json -e postman/Mundialito-Docker.postman_environment.json` (en PowerShell, `npx.cmd`). |
-| **Tests unitarios** | `cd backend && dotnet test tests/Mundialito.UnitTests` (42 tests, sin Docker) |
+| **Postman** | Importar [postman/](postman/) (colección + entorno *Mundialito - Docker*) y *Run collection*: 52 requests con 171 tests (idempotencia, filtros, paginación, errores). Desde la terminal: `npx newman run postman/Mundialito.postman_collection.json -e postman/Mundialito-Docker.postman_environment.json` (en PowerShell, `npx.cmd`). |
+| **Tests unitarios** | `cd backend && dotnet test tests/Mundialito.UnitTests` (46 tests, sin Docker) |
 | **Tests de integración** | `cd backend && dotnet test tests/Mundialito.IntegrationTests` (14 tests contra un SQL Server real en Docker, con Testcontainers) |
-| **Frontend** | http://localhost:3000: tabla, goleadores, equipos (crear), partidos (filtros), registrar o corregir resultados |
+| **Frontend** | http://localhost:3000: tabla, goleadores, equipos (crear), partidos (filtros), registrar o corregir resultados (con autogoles) |
 | **Trazabilidad** | Toda respuesta trae `X-Trace-Id`. Buscarlo en Seq (`@TraceId = '...'`) y en Jaeger (*Search* → *Trace ID*) |
 
 ## Arquitectura
@@ -84,7 +84,7 @@ Cinco diagramas (despliegue, capas, flujo de escritura, flujo de lectura y traza
 | 12 | Docker | [docker-compose.yml](docker-compose.yml), [backend/Dockerfile](backend/Dockerfile), [frontend/Dockerfile](frontend/Dockerfile) |
 | 13 | Diagrama | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) |
 | 14 | Postman | [postman/](postman/) |
-| 15 | Tests | [backend/tests/](backend/tests/): 42 unitarios + 14 de integración |
+| 15 | Tests | [backend/tests/](backend/tests/): 46 unitarios + 14 de integración |
 
 El detalle de cada decisión, con alternativas y motivos, está en [docs/DECISIONES.md](docs/DECISIONES.md).
 El orden en que se construyó, paso a paso, en [ROADMAP.md](ROADMAP.md). Los requisitos resumidos, en

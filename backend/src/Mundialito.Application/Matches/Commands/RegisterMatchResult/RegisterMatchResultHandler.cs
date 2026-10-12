@@ -26,7 +26,7 @@ internal sealed class RegisterMatchResultHandler(
             return MatchErrors.NotFound(command.MatchId);
         }
 
-        var scorersResult = await ResolveScorersAsync(command.ScorerPlayerIds, cancellationToken);
+        var scorersResult = await ResolveScorersAsync(command, cancellationToken);
         if (scorersResult.IsFailure)
         {
             return scorersResult.Error;
@@ -53,13 +53,14 @@ internal sealed class RegisterMatchResultHandler(
     }
 
     /// <summary>
-    /// Convierte los Ids recibidos en goleadores con su equipo, trayendo todos los jugadores en una sola consulta.
+    /// Convierte los Ids recibidos (goles y autogoles) en goleadores con su equipo, trayendo todos los
+    /// jugadores en una sola consulta.
     /// </summary>
     private async Task<Result<List<GoalScorer>>> ResolveScorersAsync(
-        IReadOnlyCollection<Guid> playerIds,
+        RegisterMatchResultCommand command,
         CancellationToken cancellationToken)
     {
-        var distinctIds = playerIds.Distinct().ToList();
+        var distinctIds = command.ScorerPlayerIds.Concat(command.OwnGoalPlayerIds).Distinct().ToList();
         var found = await players.GetByIdsAsync(distinctIds, cancellationToken);
         var teamByPlayer = found.ToDictionary(p => p.Id, p => p.TeamId);
 
@@ -71,8 +72,12 @@ internal sealed class RegisterMatchResultHandler(
             }
         }
 
-        // Se recorre la lista original (no la distinta): cada aparición es un gol.
-        return Result.Success(playerIds.Select(id => new GoalScorer(id, teamByPlayer[id])).ToList());
+        // Se recorren las listas originales (no la distinta): cada aparición es un gol.
+        // El equipo es siempre el del jugador; a quién suma un autogol lo decide Match.
+        var goals = command.ScorerPlayerIds.Select(id => new GoalScorer(id, teamByPlayer[id]));
+        var ownGoals = command.OwnGoalPlayerIds.Select(id => new GoalScorer(id, teamByPlayer[id], IsOwnGoal: true));
+
+        return Result.Success(goals.Concat(ownGoals).ToList());
     }
 
     private async Task<TeamStanding> GetStandingAsync(Guid teamId, CancellationToken cancellationToken) =>

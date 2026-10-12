@@ -7,21 +7,27 @@ namespace Mundialito.Domain.Matches;
 /// </summary>
 public sealed class Goal : Entity
 {
-    private Goal(Guid id, Guid matchId, Guid playerId, Guid teamId)
+    private Goal(Guid id, Guid matchId, Guid playerId, Guid teamId, bool isOwnGoal)
         : base(id)
     {
         MatchId = matchId;
         PlayerId = playerId;
         TeamId = teamId;
+        IsOwnGoal = isOwnGoal;
     }
 
     public Guid MatchId { get; }
 
     public Guid PlayerId { get; }
 
-    /// <summary>Equipo al que suma el gol (sin autogoles: siempre el equipo del jugador).</summary>
+    /// <summary>
+    /// Equipo al que suma el gol: el del jugador o, si es autogol, el rival. El marcador se cuenta con este campo.
+    /// </summary>
     public Guid TeamId { get; }
 
-    internal static Goal Create(Guid matchId, GoalScorer scorer) =>
-        new(Guid.CreateVersion7(), matchId, scorer.PlayerId, scorer.TeamId);
+    /// <summary>Un autogol suma al rival y no cuenta en la tabla de goleadores.</summary>
+    public bool IsOwnGoal { get; }
+
+    internal static Goal Create(Guid matchId, GoalScorer scorer, Guid creditedTeamId) =>
+        new(Guid.CreateVersion7(), matchId, scorer.PlayerId, creditedTeamId, scorer.IsOwnGoal);
 }

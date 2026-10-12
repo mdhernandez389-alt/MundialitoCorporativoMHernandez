@@ -10,6 +10,7 @@ namespace Mundialito.Infrastructure.Queries.Scorers;
 /// <summary>
 /// Tabla de goleadores (§8). Se calcula al vuelo agrupando <c>Goals</c> (con índice por jugador):
 /// como el marcador se deriva de los goles, esta tabla y la de posiciones nunca se contradicen.
+/// Los autogoles cuentan en el marcador pero no aquí: no son mérito del jugador.
 /// </summary>
 internal sealed class GetScorersHandler(DbConnectionFactory connections)
     : IQueryHandler<GetScorersQuery, PagedResult<ScorerDto>>
@@ -25,6 +26,7 @@ internal sealed class GetScorersHandler(DbConnectionFactory connections)
             FROM Goals g
             JOIN Players p ON p.Id = g.PlayerId
             JOIN Teams t ON t.Id = p.TeamId
+            WHERE g.IsOwnGoal = 0
             GROUP BY p.Id, p.FullName, p.ShirtNumber, p.TeamId, t.Name
         ) sc
         """;

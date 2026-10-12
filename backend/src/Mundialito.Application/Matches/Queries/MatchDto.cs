@@ -46,5 +46,8 @@ public sealed record GoalDto
 
     public string PlayerName { get; init; } = string.Empty;
 
+    /// <summary>Equipo al que suma el gol (en un autogol, el rival del jugador).</summary>
     public Guid TeamId { get; init; }
+
+    public bool IsOwnGoal { get; init; }
 }

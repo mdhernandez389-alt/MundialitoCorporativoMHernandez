@@ -75,7 +75,7 @@ public sealed class MatchesController : ApiController
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new RegisterMatchResultCommand(matchId, request.ScorerPlayerIds!),
+            new RegisterMatchResultCommand(matchId, request.ScorerPlayerIds!, request.OwnGoalPlayerIds ?? []),
             cancellationToken);
 
         return NoContentOrProblem(result);

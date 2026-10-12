@@ -27,5 +27,5 @@ export const createTeam = (input: { name: string; department: string }, idempote
   apiSend<Created>("POST", "/api/teams", input, { "Idempotency-Key": idempotencyKey });
 
 /** PUT: reemplaza el resultado completo (idempotente por diseño, no necesita key). */
-export const registerMatchResult = (matchId: string, scorerPlayerIds: string[]) =>
-  apiSend<void>("PUT", `/api/matches/${id(matchId)}/result`, { scorerPlayerIds });
+export const registerMatchResult = (matchId: string, scorerPlayerIds: string[], ownGoalPlayerIds: string[]) =>
+  apiSend<void>("PUT", `/api/matches/${id(matchId)}/result`, { scorerPlayerIds, ownGoalPlayerIds });

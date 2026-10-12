@@ -39,7 +39,9 @@ export type Match = {
 export type Goal = {
   playerId: string;
   playerName: string;
+  /** Equipo al que suma el gol: en un autogol, el rival del jugador. */
   teamId: string;
+  isOwnGoal: boolean;
 };
 
 export type MatchDetail = Match & { goals: Goal[] };

@@ -28,6 +28,9 @@ namespace Mundialito.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("IsOwnGoal")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("MatchId")
                         .HasColumnType("uniqueidentifier");
 

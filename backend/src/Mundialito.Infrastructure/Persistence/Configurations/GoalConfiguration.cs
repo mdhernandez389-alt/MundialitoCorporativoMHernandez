@@ -19,6 +19,9 @@ internal sealed class GoalConfiguration : IEntityTypeConfiguration<Goal>
         builder.HasOne<Player>().WithMany().HasForeignKey(g => g.PlayerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Team>().WithMany().HasForeignKey(g => g.TeamId).OnDelete(DeleteBehavior.Restrict);
 
+        // Propiedad de solo lectura: EF no la mapea por convención. Los goles ya guardados quedan en false.
+        builder.Property(g => g.IsOwnGoal);
+
         builder.Ignore(g => g.DomainEvents);
     }
 }

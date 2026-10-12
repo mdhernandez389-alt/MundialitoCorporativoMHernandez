@@ -16,6 +16,10 @@ public sealed class MatchTests
 
     private static GoalScorer AwayGoal => new(AwayStriker, Away);
 
+    private static GoalScorer HomeOwnGoal => new(HomeStriker, Home, IsOwnGoal: true);
+
+    private static GoalScorer AwayOwnGoal => new(AwayStriker, Away, IsOwnGoal: true);
+
     [Fact]
     public void Un_equipo_no_puede_jugar_contra_si_mismo()
     {
@@ -94,5 +98,53 @@ public sealed class MatchTests
 
         Assert.Equal(MatchErrors.ScorerNotInMatch, result.Error);
         Assert.Null(match.Score);
+    }
+
+    [Fact]
+    public void Un_autogol_suma_al_rival_del_jugador()
+    {
+        var match = NewMatch();
+
+        match.RegisterResult([HomeGoal, HomeOwnGoal, AwayOwnGoal]);
+
+        Assert.Equal(new Score(2, 1), match.Score);
+        var ownGoal = Assert.Single(match.Goals, g => g.IsOwnGoal && g.PlayerId == HomeStriker);
+        Assert.Equal(Away, ownGoal.TeamId);
+    }
+
+    [Fact]
+    public void Un_autogol_de_un_jugador_ajeno_al_partido_es_rechazado()
+    {
+        var match = NewMatch();
+
+        var result = match.RegisterResult([new GoalScorer(Guid.NewGuid(), Guid.NewGuid(), IsOwnGoal: true)]);
+
+        Assert.Equal(MatchErrors.ScorerNotInMatch, result.Error);
+    }
+
+    [Fact]
+    public void Corregir_un_gol_por_un_autogol_del_mismo_jugador_cambia_el_resultado()
+    {
+        var match = NewMatch();
+        match.RegisterResult([HomeGoal]);
+        match.ClearDomainEvents();
+
+        match.RegisterResult([HomeOwnGoal]);
+
+        Assert.Equal(new Score(0, 1), match.Score);
+        var domainEvent = Assert.IsType<MatchResultRegisteredDomainEvent>(Assert.Single(match.DomainEvents));
+        Assert.Equal(new Score(1, 0), domainEvent.PreviousScore);
+    }
+
+    [Fact]
+    public void El_mismo_resultado_con_autogoles_en_otro_orden_no_emite_evento()
+    {
+        var match = NewMatch();
+        match.RegisterResult([HomeGoal, HomeOwnGoal, AwayGoal]);
+        match.ClearDomainEvents();
+
+        match.RegisterResult([AwayGoal, HomeGoal, HomeOwnGoal]);
+
+        Assert.Empty(match.DomainEvents);
     }
 }

@@ -88,7 +88,7 @@ Domain/
 | Decisión | Elegido | Por qué |
 |---|---|---|
 | Ids | `Guid` generado por el dominio (`Guid.CreateVersion7()`) | La entidad tiene identidad desde que nace: el evento `TeamCreated` y la URL del `201 Created` no dependen de la base. Contra: SQL Server ordena los `uniqueidentifier` por sus últimos bytes, así que v7 no evita del todo la fragmentación del índice; para este volumen es irrelevante. |
-| Marcador vs. goles | **El marcador se deriva de los goles** | El request de resultado es la lista de goleadores; `Match` cuenta los de cada equipo. Es imposible que tabla y goleadores se contradigan: la regla no se valida, no se puede romper. Fuera de alcance (documentado): autogoles. |
+| Marcador vs. goles | **El marcador se deriva de los goles** | El request de resultado es la lista de goleadores; `Match` cuenta los de cada equipo. Es imposible que tabla y goleadores se contradigan: la regla no se valida, no se puede romper. Los autogoles se agregaron después (ver §22). |
 | Corrección de resultado | `PUT` idempotente | El resultado es un sub-recurso que se reemplaza. Mismo resultado (aunque en otro orden) → sin cambios ni evento. Distinto → se reemplazan los goles y el evento lleva `PreviousScore`. |
 | Tabla de posiciones | **Guardada** (`TeamStanding`) y actualizada en la misma transacción | Las reglas (3/1/0, diferencia de gol) viven en C# y se prueban con tests unitarios (§15). Actualizar resultado + 2 filas de tabla en una transacción demuestra el UoW con varios repositorios (§4). Dapper solo lee y ordena. Contra: dato derivado; lo protege la transacción. |
 | `ApplyResult` / `RevertResult` | Un solo método `Tally(gf, gc, direction)` con `+1` / `-1` | Revertir resta exactamente lo que aplicar sumó; no hay dos versiones de la regla que puedan desincronizarse. |
@@ -262,6 +262,7 @@ Infrastructure/Queries/                        (el CÓMO: Dapper + SQL)
 | Tabla: ¿calcular o leer? | **Leer** `TeamStandings` | Ya se actualiza en la misma transacción que cada resultado (paso 4); el GET no recorre partidos: su costo depende de los equipos, no de los partidos jugados. |
 | Goleadores: ¿calcular o guardar? | **Calcular** con `COUNT(*) … GROUP BY` sobre `Goals` | Los goles ya están normalizados e indexados por jugador. Guardar otro contador sería un dato derivado más que mantener sincronizado. Como el marcador se deriva de los goles, ambas tablas nunca se contradicen. |
 | Goleadores sin goles | No aparecen | Una tabla de goleadores lista a quien anotó. |
+| Autogoles | **No cuentan** (`WHERE g.IsOwnGoal = 0`) | Suman al marcador del rival, pero no son mérito del jugador (ver §22). |
 
 ## 14. Idempotencia en POST (§6)
 
@@ -477,7 +478,7 @@ docker-compose up --build
 
 ```
 postman/
-  Mundialito.postman_collection.json         50 requests, 7 carpetas, 165 aserciones
+  Mundialito.postman_collection.json         52 requests, 7 carpetas, 171 aserciones
   Mundialito-Docker.postman_environment.json baseUrl = http://localhost:5000
   Mundialito-Local.postman_environment.json  baseUrl = http://localhost:5092
 ```
@@ -501,9 +502,9 @@ postman/
 | Idempotency-Key | `{{$guid}}` nuevo por request; la carpeta 5 reutiliza una a propósito | Muestra los tres casos del §6: repetición, key reusada y key ausente. |
 | Trazabilidad | `X-Correlation-Id: postman-{{runTag}}` en todos los requests | En Seq, `CorrelationId = 'postman-...'` muestra todos los logs de una corrida (§7). |
 | Variables de entorno | Dos entornos con `baseUrl` | Docker (5000) o la API local (5092), sin tocar la colección. |
-| Generación | Script (no versionado) que produce el JSON | 50 requests escritos de forma uniforme; el JSON versionado es lo que se importa en Postman. |
+| Generación | Script (no versionado) que produce el JSON | Requests escritos de forma uniforme; el JSON versionado es lo que se importa en Postman. |
 
-**Verificado:** `newman` contra el docker-compose: 50 requests, 165 aserciones, 0 fallos; una segunda corrida sobre la misma base también pasa completa.
+**Verificado:** `newman` contra el docker-compose: 50 requests, 165 aserciones, 0 fallos; una segunda corrida sobre la misma base también pasa completa. Con los autogoles (§22): 52 requests, 171 aserciones, 0 fallos.
 
 ## 21. Diagrama de arquitectura y README (§13)
 
@@ -513,3 +514,20 @@ postman/
 | Vistas | **Cinco diagramas enfocados** en [ARQUITECTURA.md](ARQUITECTURA.md) + uno general en el README | Despliegue, capas, escritura, lectura y trazabilidad: cada uno responde una pregunta y entre todos cubren los 11 elementos del §13. Un único diagrama con todo sería ilegible. |
 | README | Puerta de entrada: levantar con un comando, cómo probar, arquitectura y una tabla **requisito → dónde se cumple** | El evaluador encuentra cada punto de la prueba sin recorrer el código. |
 | Desarrollo local | El compose expone SQL Server (14333) y OTLP (4317) | `docker-compose up -d db seq jaeger` + `dotnet run`: sin contenedores de desarrollo aparte. Los puertos coinciden con `appsettings.Development.json`. |
+
+## 22. Autogoles (extensión posterior al roadmap, §8)
+
+El enunciado no los menciona; al principio quedaron fuera de alcance (documentado). Se agregaron porque un
+resultado real los tiene y el modelo ya los admitía: `Goal.TeamId` siempre fue "equipo al que suma el gol",
+no "equipo del jugador".
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Contrato | `ownGoalPlayerIds` **opcional** junto a `scorerPlayerIds` (un Id por autogol) | Cambio compatible: los clientes que no lo conocen (la colección vieja, otro frontend) siguen funcionando. Ausente = sin autogoles. |
+| A quién suma | Lo decide **`Match`** (`CreditedTeamId`): el rival del jugador | Es una regla del partido: solo el agregado sabe quién es local y quién visitante. El handler solo resuelve el equipo de cada jugador. |
+| Marcador | Se cuenta sobre los `Goal` creados (equipo beneficiado) | Sigue habiendo una sola fuente: el marcador y la tabla no pueden contradecir a los goles. `StandingsUpdater` no cambió. |
+| Idempotencia del PUT | `HasSameScorers` compara el multiconjunto de **(`PlayerId`, `IsOwnGoal`)** | Comparando solo `PlayerId`, corregir "gol de Juan" por "autogol de Juan" se tomaría como "sin cambios": 204 sin corregir nada. `TeamId` no entra en la clave porque en `Goal` y en `GoalScorer` significa cosas distintas. Lo cubre un test unitario. |
+| Goleadores | Excluidos con `WHERE g.IsOwnGoal = 0` | Cuentan en el marcador, no como mérito del jugador. |
+| Persistencia | Columna `IsOwnGoal bit NOT NULL DEFAULT 0` (migración `AddOwnGoals`) | Migración aditiva: los goles ya guardados quedan como goles normales. Hubo que mapearla explícitamente: EF no mapea por convención una propiedad de solo lectura. |
+| Seed | Sin autogoles | El §9 pide 3 partidos con resultado; el seed se mantiene simple. La colección de Postman cubre el caso. |
+
