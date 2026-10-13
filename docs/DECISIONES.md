@@ -537,3 +537,15 @@ no "equipo del jugador".
 | Persistencia | Columna `IsOwnGoal bit NOT NULL DEFAULT 0` (migración `AddOwnGoals`) | Migración aditiva: los goles ya guardados quedan como goles normales. Hubo que mapearla explícitamente: EF no mapea por convención una propiedad de solo lectura. |
 | Seed | Sin autogoles | El §9 pide 3 partidos con resultado; el seed se mantiene simple. La colección de Postman cubre el caso. |
 
+## 23. Integración continua (extensión posterior al roadmap)
+
+El enunciado no la pide; se agregó para que el repositorio público muestre, sin clonarlo, que todo pasa.
+
+| Decisión | Elegido | Por qué |
+|---|---|---|
+| Herramienta | **GitHub Actions** ([ci.yml](../.github/workflows/ci.yml)) | El repo ya está en GitHub (modalidad del §16); el badge del README muestra el estado. |
+| Jobs | `backend` (unit + integración), `frontend` (eslint, tsc, build), `e2e` (compose + newman) | Los dos primeros son rápidos y corren en paralelo en cada push y PR. `e2e` depende de ellos: no se construyen imágenes si algo básico ya falló. |
+| SQL Server en CI | El mismo **Testcontainers** que en local | Los runners Linux traen Docker: el fixture levanta su base igual que en la máquina del desarrollador. Sin servicios declarados en el YAML ni una segunda forma de correr los tests. |
+| `e2e` | Solo en push a `main` (y manual) | Es la prueba "tipo producción" del §12: el mismo `docker compose up --build` del README, verifica el seed (4 equipos) y corre las 171 aserciones de Postman. Tarda varios minutos; en un PR basta con los jobs rápidos. |
+| Diagnóstico | Resultados `.trx` como artefacto; `docker compose logs` si `e2e` falla | Un fallo en CI se investiga sin reproducirlo localmente. |
+

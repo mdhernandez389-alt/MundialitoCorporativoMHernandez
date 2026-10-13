@@ -1,5 +1,7 @@
 # Mundialito Corporativo
 
+[![CI](https://github.com/mdhernandez389-alt/MundialitoCorporativoMHernandez/actions/workflows/ci.yml/badge.svg)](https://github.com/mdhernandez389-alt/MundialitoCorporativoMHernandez/actions/workflows/ci.yml)
+
 Sistema de gestión de un torneo de fútbol corporativo: equipos, jugadores, calendario de partidos,
 resultados, tabla de posiciones y goleadores. Prueba técnica de desarrollador .NET.
 
@@ -36,6 +38,7 @@ valor de demo; para usar otra, copiar [.env.example](.env.example) a `.env`.
 | **Tests unitarios** | `cd backend && dotnet test tests/Mundialito.UnitTests` (46 tests, sin Docker) |
 | **Tests de integración** | `cd backend && dotnet test tests/Mundialito.IntegrationTests` (14 tests contra un SQL Server real en Docker, con Testcontainers) |
 | **Frontend** | http://localhost:3000: tabla, goleadores, equipos (crear, editar, eliminar, registrar jugadores), partidos (filtros, programar), registrar o corregir resultados (con autogoles) |
+| **CI** | [GitHub Actions](.github/workflows/ci.yml) en cada push y PR: tests unitarios + integración, lint/tipos/build del frontend. En `main`, además, `docker compose up --build` + la colección de Postman con newman |
 | **Trazabilidad** | Toda respuesta trae `X-Trace-Id`. Buscarlo en Seq (`@TraceId = '...'`) y en Jaeger (*Search* → *Trace ID*) |
 
 ## Arquitectura

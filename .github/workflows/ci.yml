@@ -1,0 +1,116 @@
+# CI: tests del backend, chequeos del frontend y, en main, el sistema completo con docker compose + Postman.
+#
+#   backend   dotnet test: 46 unitarios + 14 de integración (Testcontainers usa el Docker del runner)
+#   frontend  eslint, tsc y next build
+#   e2e       docker compose up --build y la colección de Postman con newman (solo push a main / manual)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo a la misma rama cancela la corrida anterior, que ya quedó vieja.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (unit + integración)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Tests unitarios
+        run: dotnet test tests/Mundialito.UnitTests --no-build -c Release --logger "trx;LogFileName=unit.trx"
+
+      # El fixture levanta su propio SQL Server con Testcontainers: no hace falta declarar un servicio de base.
+      - name: Tests de integración (SQL Server real)
+        run: dotnet test tests/Mundialito.IntegrationTests --no-build -c Release --logger "trx;LogFileName=integration.trx"
+
+      - name: Guardar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/tests/**/TestResults/*.trx
+
+  frontend:
+    name: Frontend (lint, tipos, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+  e2e:
+    name: Sistema completo (docker compose + Postman)
+    needs: [backend, frontend]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # El mismo comando del README (§12): API, SQL Server, frontend, Seq y Jaeger.
+      - name: docker compose up
+        run: docker compose up --build -d
+
+      # La API espera a SQL Server, migra y siembra sola; aquí solo se espera a que responda.
+      - name: Esperar a la API y al frontend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5000/api/standings > /dev/null && curl -sf http://localhost:3000 > /dev/null; then
+              echo "Listo en $((i * 5)) s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "La API o el frontend no respondieron en 5 minutos"; exit 1
+
+      - name: Seed aplicado (4 equipos)
+        run: |
+          total=$(curl -s http://localhost:5000/api/teams | jq .totalRecords)
+          echo "Equipos: $total"
+          test "$total" -eq 4
+
+      - name: Colección de Postman (newman)
+        run: >
+          npx --yes newman@6 run postman/Mundialito.postman_collection.json
+          -e postman/Mundialito-Docker.postman_environment.json
+
+      - name: Logs de los contenedores
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: docker compose down
+        if: always()
+        run: docker compose down -v
