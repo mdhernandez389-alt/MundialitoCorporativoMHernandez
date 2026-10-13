@@ -17,3 +17,9 @@ export const statusLabel = (status: string) => (status === "Played" ? "Jugado" :
 /** Una fecha del filtro (YYYY-MM-DD) como inicio o fin de ese día en El Salvador (UTC−6), con zona horaria. */
 export const startOfDay = (date?: string) => (date ? `${date}T00:00:00-06:00` : undefined);
 export const endOfDay = (date?: string) => (date ? `${date}T23:59:59-06:00` : undefined);
+
+/**
+ * Un `<input type="datetime-local">` (2026-10-15T18:00) no trae zona: se interpreta como hora de El Salvador,
+ * igual que se muestra. El Salvador no tiene horario de verano, así que el desfase es siempre −06:00.
+ */
+export const fromLocalDateTime = (value: string) => (value ? `${value}:00-06:00` : "");

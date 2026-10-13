@@ -409,9 +409,9 @@ frontend/src/
     page.tsx               Tabla de posiciones
     scorers/               Goleadores
     teams/                 Equipos (filtros, orden, paginación) + crear equipo (Server Action, Idempotency-Key)
-    teams/[id]/            Equipo y sus jugadores
-    matches/               Partidos (desde/hasta, equipo, estado)
-    matches/[id]/          Detalle + registrar/corregir resultado (Server Action, PUT)
+    teams/[id]/            Equipo y sus jugadores + registrar jugador, editar (PUT) y eliminar (DELETE)
+    matches/               Partidos (desde/hasta, equipo, estado) + programar partido (Idempotency-Key)
+    matches/[id]/          Detalle + registrar/corregir resultado con autogoles (Server Action, PUT)
     loading.tsx · error.tsx · not-found.tsx
 ```
 
@@ -424,6 +424,7 @@ frontend/src/
 | Goleadores | `/scorers` |
 | Filtros + paginación | En todos los listados, con orden por columna |
 | Manejo de errores | `ApiResult` + `ErrorAlert` (mensaje, código, traceId); `notFound()` para 404; `error.tsx` para lo inesperado |
+| CRUD de equipos (§8), jugadores y partidos | `/teams` (crear), `/teams/[id]` (editar, eliminar, registrar jugador), `/matches` (programar). Agregado después del roadmap: el §11 pide visualización, pero sin esto el torneo no se puede armar desde el navegador |
 
 | Decisión | Elegido | Por qué |
 |---|---|---|
@@ -437,6 +438,11 @@ frontend/src/
 | Fechas | Se muestran en `America/El_Salvador`, explícito | El servidor de Next puede correr en UTC (Docker); sin zona fija, la hora mostrada dependería de dónde corre. |
 | Estilos | Tailwind mínimo, fuente del sistema | Lo visual no se evalúa. Sin fuentes de Google: el build de Docker no depende de descargarlas. |
 | 404 con streaming | La página "No encontrado" se muestra, pero con status HTTP 200 | Con Partial Prerender el esqueleto se envía antes de consultar la API; una vez enviado el primer byte, el status no se puede cambiar. Next incluye el componente not-found en el payload y lo muestra al hidratar. El 404 "real" lo da la API (que es lo que se evalúa); el frontend es la presentación. |
+| Equipo con jugadores | **Crear el equipo y redirigir a su página**, donde se registran los jugadores uno a uno | `Team` y `Player` son agregados separados y `TeamCreated` se emite al crear el equipo. Un formulario combinado haría varios POST sin atomicidad (equipo creado a medias si falla un jugador) o pediría un endpoint que cruce agregados. |
+| Formularios de escritura | Mismo patrón en todos: Client Component mínimo + Server Action; los POST con key generada al renderizar | Tras registrar un jugador, `refresh()` vuelve a renderizar: aparece en la lista y el formulario trae otra key. Tras programar un partido se va a su detalle, donde se registra el resultado. |
+| Eliminar equipo | `window.confirm` + DELETE; con partidos, el 409 (`Team.HasMatches`) se muestra en la página | El conflicto del §6 se ve desde el navegador, no solo en Postman. Editar usa PUT (formulario completo, precargado); PATCH queda demostrado en Postman. |
+| Fecha del partido | `datetime-local` interpretado como hora de El Salvador (`-06:00`, sin horario de verano) | Se ingresa en la misma zona en que se muestra; la API recibe la fecha con zona y guarda UTC. |
+| Sin JavaScript | Los formularios funcionan igual (progressive enhancement de las Server Actions) | Verificado enviándolos sin JS: crear, editar, eliminar, registrar y programar llegan a la API y los errores se muestran. Única diferencia: el aviso de "guardado" tras un `refresh()` solo aparece con JS. |
 | `toProblem` | Lee el ProblemDetails con respaldo para cada campo | Un error de la API nunca rompe la página: si el cuerpo no es JSON (un proxy, un 502), igual se muestra un error con el status real. |
 
 ## 19. Docker (§12)

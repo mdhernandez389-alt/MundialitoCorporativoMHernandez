@@ -26,6 +26,27 @@ export const getMatch = (matchId: string) => apiGet<MatchDetail>(`/api/matches/$
 export const createTeam = (input: { name: string; department: string }, idempotencyKey: string) =>
   apiSend<Created>("POST", "/api/teams", input, { "Idempotency-Key": idempotencyKey });
 
+/** PUT: reemplaza nombre y departamento (idempotente por diseño, no necesita key). */
+export const updateTeam = (teamId: string, input: { name: string; department: string }) =>
+  apiSend<void>("PUT", `/api/teams/${id(teamId)}`, input);
+
+/** DELETE idempotente: borrar dos veces responde 204 las dos. Con partidos jugados o programados → 409. */
+export const deleteTeam = (teamId: string) => apiSend<void>("DELETE", `/api/teams/${id(teamId)}`);
+
+/** POST idempotente (§6): la misma key devuelve el mismo jugador. */
+export const registerPlayer = (
+  teamId: string,
+  input: { fullName: string; shirtNumber: number },
+  idempotencyKey: string,
+) =>
+  apiSend<Created>("POST", `/api/teams/${id(teamId)}/players`, input, { "Idempotency-Key": idempotencyKey });
+
+/** POST idempotente (§6): la misma key devuelve el mismo partido. `scheduledAt` va con zona horaria. */
+export const scheduleMatch = (
+  input: { homeTeamId: string; awayTeamId: string; scheduledAt: string },
+  idempotencyKey: string,
+) => apiSend<Created>("POST", "/api/matches", input, { "Idempotency-Key": idempotencyKey });
+
 /** PUT: reemplaza el resultado completo (idempotente por diseño, no necesita key). */
 export const registerMatchResult = (matchId: string, scorerPlayerIds: string[], ownGoalPlayerIds: string[]) =>
   apiSend<void>("PUT", `/api/matches/${id(matchId)}/result`, { scorerPlayerIds, ownGoalPlayerIds });

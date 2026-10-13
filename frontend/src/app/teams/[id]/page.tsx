@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { Field, FilterForm } from "@/components/FilterForm";
@@ -7,6 +8,10 @@ import { Pagination } from "@/components/Pagination";
 import { SortableHeader } from "@/components/SortableHeader";
 import { getTeam, getTeamPlayers } from "@/lib/api/endpoints";
 import { readPaging, readParam, type SearchParams } from "@/lib/search-params";
+
+import { DeleteTeamButton } from "./DeleteTeamButton";
+import { EditTeamForm } from "./EditTeamForm";
+import { RegisterPlayerForm } from "./RegisterPlayerForm";
 
 export default async function TeamPage({
   params,
@@ -73,6 +78,29 @@ export default async function TeamPage({
           <Pagination path={path} params={query} page={players.data} />
         </>
       )}
+
+      <div className="space-y-2">
+        <h2 className="font-semibold">Registrar jugador</h2>
+        <NewPlayer teamId={team.data.id} />
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="font-semibold">Editar equipo</h2>
+        <EditTeamForm team={team.data} />
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="font-semibold">Eliminar equipo</h2>
+        <p className="text-sm text-gray-600">Solo si no tiene partidos. Se eliminan también sus jugadores.</p>
+        <DeleteTeamButton teamId={team.data.id} teamName={team.data.name} />
+      </div>
     </section>
   );
+}
+
+/** Genera una Idempotency-Key por cada vez que se muestra el formulario (también tras registrar un jugador). */
+async function NewPlayer({ teamId }: { teamId: string }) {
+  // Con Cache Components, un valor distinto en cada request (randomUUID) exige pasar primero por connection().
+  await connection();
+  return <RegisterPlayerForm teamId={teamId} idempotencyKey={crypto.randomUUID()} />;
 }

@@ -35,7 +35,7 @@ valor de demo; para usar otra, copiar [.env.example](.env.example) a `.env`.
 | **Postman** | Importar [postman/](postman/) (colección + entorno *Mundialito - Docker*) y *Run collection*: 52 requests con 171 tests (idempotencia, filtros, paginación, errores). Desde la terminal: `npx newman run postman/Mundialito.postman_collection.json -e postman/Mundialito-Docker.postman_environment.json` (en PowerShell, `npx.cmd`). |
 | **Tests unitarios** | `cd backend && dotnet test tests/Mundialito.UnitTests` (46 tests, sin Docker) |
 | **Tests de integración** | `cd backend && dotnet test tests/Mundialito.IntegrationTests` (14 tests contra un SQL Server real en Docker, con Testcontainers) |
-| **Frontend** | http://localhost:3000: tabla, goleadores, equipos (crear), partidos (filtros), registrar o corregir resultados (con autogoles) |
+| **Frontend** | http://localhost:3000: tabla, goleadores, equipos (crear, editar, eliminar, registrar jugadores), partidos (filtros, programar), registrar o corregir resultados (con autogoles) |
 | **Trazabilidad** | Toda respuesta trae `X-Trace-Id`. Buscarlo en Seq (`@TraceId = '...'`) y en Jaeger (*Search* → *Trace ID*) |
 
 ## Arquitectura

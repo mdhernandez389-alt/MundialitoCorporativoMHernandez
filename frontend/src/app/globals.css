@@ -30,6 +30,12 @@ button {
   color: #ffffff;
 }
 
+/* Acción destructiva (eliminar). Clase propia: estas reglas no están en un @layer y les ganan a las de Tailwind. */
+button.danger {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
 button:disabled {
   opacity: 0.5;
 }

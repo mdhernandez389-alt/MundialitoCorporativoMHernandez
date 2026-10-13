@@ -1,13 +1,16 @@
 import Link from "next/link";
+import { connection } from "next/server";
 
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { Field, FilterForm } from "@/components/FilterForm";
 import { Pagination } from "@/components/Pagination";
 import { SortableHeader } from "@/components/SortableHeader";
 import { TeamSelect } from "@/components/TeamSelect";
-import { getMatches } from "@/lib/api/endpoints";
+import { getMatches, getTeams } from "@/lib/api/endpoints";
 import { endOfDay, formatDateTime, startOfDay, statusLabel } from "@/lib/format";
 import { readPaging, readParam, type SearchParams } from "@/lib/search-params";
+
+import { ScheduleMatchForm } from "./ScheduleMatchForm";
 
 const PATH = "/matches";
 
@@ -88,6 +91,24 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
           <Pagination path={PATH} params={params} page={result.data} />
         </>
       )}
+
+      <div className="space-y-2">
+        <h2 className="font-semibold">Programar partido</h2>
+        <NewMatch />
+      </div>
     </section>
   );
+}
+
+/** Genera una Idempotency-Key por cada vez que se muestra el formulario y le pasa los equipos. */
+async function NewMatch() {
+  // Con Cache Components, un valor distinto en cada request (randomUUID) exige pasar primero por connection().
+  await connection();
+  // Hasta 100 equipos (el máximo de la API), como TeamSelect: el torneo tiene pocos.
+  const teams = await getTeams({ pageSize: 100, sortBy: "name" });
+  if (!teams.ok) {
+    return <ErrorAlert problem={teams.problem} />;
+  }
+
+  return <ScheduleMatchForm teams={teams.data.data} idempotencyKey={crypto.randomUUID()} />;
 }
